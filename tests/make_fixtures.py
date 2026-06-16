@@ -76,6 +76,14 @@ def base_manifest(artifact_path: Path, sha: str, size: int) -> dict:
     }
 
 
+def base_https_manifest(artifact_url: str, sha: str, size: int) -> dict:
+    manifest = base_manifest(Path("../artifacts/stronk-pi-plugin-0.1.0.tgz"), sha, size)
+    item = manifest["artifacts"][0]
+    item.pop("artifactPath")
+    item["artifactUrl"] = artifact_url
+    return manifest
+
+
 def write_manifest(name: str, data: dict) -> None:
     (MANIFEST_DIR / name).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -105,6 +113,14 @@ def main() -> None:
     good_size = good.stat().st_size
     good_manifest = base_manifest(Path("../artifacts") / good.name, good_sha, good_size)
     write_manifest("good-local.json", good_manifest)
+    write_manifest(
+        "good-https-artifact.json",
+        base_https_manifest(
+            "https://github.com/EYYCHEEV/stronk-pi/releases/download/stronk-pi-v0.1.0/stronk-pi-plugin-0.1.0.tgz",
+            good_sha,
+            good_size,
+        ),
+    )
 
     checksum = json.loads(json.dumps(good_manifest))
     checksum["artifacts"][0]["sha256"] = "0" * 64
@@ -125,6 +141,26 @@ def main() -> None:
     wrong = json.loads(json.dumps(good_manifest))
     wrong["artifacts"][0]["provenance"]["sourceCommit"] = "f" * 40
     write_manifest("wrong-provenance.json", wrong)
+
+    missing_attestation = json.loads(json.dumps(good_manifest))
+    missing_attestation["artifacts"][0].pop("attestation")
+    write_manifest("missing-attestation.json", missing_attestation)
+
+    compatibility = json.loads(json.dumps(good_manifest))
+    compatibility["artifacts"][0]["compatibilityVersion"] = "stronkpi-setup-v2"
+    write_manifest("compatibility-mismatch.json", compatibility)
+
+    created_at = json.loads(json.dumps(good_manifest))
+    created_at["artifacts"][0]["createdAt"] = "not-a-date"
+    write_manifest("invalid-created-at.json", created_at)
+
+    http_release = json.loads(json.dumps(good_manifest))
+    http_release["artifacts"][0]["releaseUrl"] = "http://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0"
+    write_manifest("http-release-url-denied.json", http_release)
+
+    missing_provenance = json.loads(json.dumps(good_manifest))
+    missing_provenance["artifacts"][0].pop("provenance")
+    write_manifest("missing-provenance.json", missing_provenance)
 
     for filename, artifact in (
         ("archive-traversal-denied.json", traversal),

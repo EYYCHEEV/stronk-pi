@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
 import subprocess
 import sys
@@ -39,6 +40,48 @@ class ManifestVerifierTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].name, "stronk-pi-plugin")
 
+    def test_good_https_artifact_manifest_verifies_with_mocked_download(self):
+        class FakeResponse(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                self.close()
+                return False
+
+            def geturl(self):
+                return "https://github.com/EYYCHEEV/stronk-pi/releases/download/stronk-pi-v0.1.0/stronk-pi-plugin-0.1.0.tgz"
+
+        old_getaddrinfo = guard.socket.getaddrinfo
+        old_urlopen = guard.urllib.request.urlopen
+        old_no_network = os.environ.get("STRONKPI_NO_NETWORK")
+        fixture = ROOT / "tests" / "fixtures" / "artifacts" / "stronk-pi-plugin-0.1.0.tgz"
+
+        def fake_getaddrinfo(host, port, type=0):
+            self.assertEqual(host, "github.com")
+            return [(guard.socket.AF_INET, guard.socket.SOCK_STREAM, 6, "", ("140.82.112.3", port))]
+
+        def fake_urlopen(request, timeout=30):
+            self.assertEqual(timeout, 30)
+            self.assertEqual(request.full_url, "https://github.com/EYYCHEEV/stronk-pi/releases/download/stronk-pi-v0.1.0/stronk-pi-plugin-0.1.0.tgz")
+            return FakeResponse(fixture.read_bytes())
+
+        try:
+            os.environ.pop("STRONKPI_NO_NETWORK", None)
+            guard.socket.getaddrinfo = fake_getaddrinfo
+            guard.urllib.request.urlopen = fake_urlopen
+            results = guard.verify_manifest(self.manifest("good-https-artifact.json"))
+        finally:
+            guard.socket.getaddrinfo = old_getaddrinfo
+            guard.urllib.request.urlopen = old_urlopen
+            if old_no_network is None:
+                os.environ.pop("STRONKPI_NO_NETWORK", None)
+            else:
+                os.environ["STRONKPI_NO_NETWORK"] = old_no_network
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].name, "stronk-pi-plugin")
+
     def assert_manifest_fails(self, name: str, text: str):
         with self.assertRaisesRegex(guard.StronkPiError, text):
             guard.verify_manifest(self.manifest(name))
@@ -57,6 +100,17 @@ class ManifestVerifierTests(unittest.TestCase):
 
     def test_wrong_provenance_fails(self):
         self.assert_manifest_fails("wrong-provenance.json", "provenance")
+
+    def test_weak_manifest_metadata_fails(self):
+        for name, expected in (
+            ("missing-attestation.json", "attestation"),
+            ("compatibility-mismatch.json", "compatibilityVersion"),
+            ("invalid-created-at.json", "createdAt"),
+            ("http-release-url-denied.json", "HTTPS"),
+            ("missing-provenance.json", "provenance"),
+        ):
+            with self.subTest(name=name):
+                self.assert_manifest_fails(name, expected)
 
     def test_archive_escape_fixtures_fail(self):
         for name, expected in (
@@ -87,4 +141,3 @@ class ManifestVerifierTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
