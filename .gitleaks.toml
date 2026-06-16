@@ -1,0 +1,23 @@
+title = "stronk-pi-setup"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "stronkpi-private-key"
+description = "Private key material"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+keywords = ["BEGIN", "PRIVATE KEY"]
+
+[[rules]]
+id = "stronkpi-session-or-auth-json"
+description = "Runtime session/auth/cache files"
+path = '''(^|/)(auth\.json|mcp-cache\.json|mcp-npx-cache\.json|mcp-onboarding\.json|sessions/|\.stronk-pi/)'''
+regex = '''.+'''
+
+[allowlist]
+description = "Synthetic test strings and generated fixture archives"
+paths = [
+  '''tests/fixtures/artifacts/.*\.tgz$''',
+]
+

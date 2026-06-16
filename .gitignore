@@ -1,0 +1,26 @@
+.DS_Store
+*.pyc
+__pycache__/
+
+# Local environment and credentials.
+.env
+.env.*
+*.local
+.npmrc
+.netrc
+id_rsa
+id_ed25519
+
+# Stronk Pi runtime state must stay user-local.
+.stronk-pi/
+.pi/agent/auth.json
+.pi/agent/mcp-cache.json
+.pi/agent/mcp-npx-cache.json
+.pi/agent/mcp-onboarding.json
+.pi/agent/sessions/
+
+# Test scratch output.
+.pytest_cache/
+.coverage
+tmp/
+

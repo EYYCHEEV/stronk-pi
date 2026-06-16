@@ -1,0 +1,33 @@
+schema_version = 1
+source_of_truth = "public-setup-manifest"
+
+[paths]
+pi_agents_dir = "../../config/pi/agent/agents"
+
+[pi]
+mode = "manifest-verified"
+enabled_roles = "generated-from-release-artifact"
+read_tools = ["read", "grep", "find", "ls"]
+write_tools = ["read", "grep", "find", "ls", "bash", "write", "edit"]
+extensions = ["managed-artifact:stronk-pi-plugin"]
+write_roles = [
+  "build-fixer",
+  "deep-executor",
+  "executor",
+  "tdd-guide",
+  "technical-writer",
+]
+system_prompt_mode = "replace"
+inherit_project_context = true
+inherit_skills = false
+default_context = "fresh"
+
+[pi.policy]
+write_routing = "owned-task-only"
+scratch_write = "guard-test-only"
+context = "fresh"
+deny_overrides = true
+deny_background = true
+deny_worktree = true
+deny_chains = true
+

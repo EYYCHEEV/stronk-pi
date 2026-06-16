@@ -1,0 +1,26 @@
+{
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-v4-pro",
+  "enableSkillCommands": true,
+  "enabledModels": [
+    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
+    "moonshotai/kimi-k2.6",
+    "kimi-code/kimi-for-coding",
+    "alibaba-coding/qwen3-coder-plus",
+    "alibaba-coding/qwen3-coder-next",
+    "alibaba-coding/qwen3.6-plus"
+  ],
+  "quietStartup": true,
+  "shellPath": "/bin/zsh",
+  "httpIdleTimeoutMs": 1800000,
+  "retry": {
+    "provider": {
+      "timeoutMs": 1800000
+    }
+  },
+  "skills": [
+    "~/.agents/skills"
+  ]
+}
+

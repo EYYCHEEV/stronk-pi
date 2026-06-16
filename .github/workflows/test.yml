@@ -1,0 +1,74 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Test / Offline
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Offline suite
+        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+
+  guardrails:
+    name: Security / Guardrails
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Guard matrix
+        run: STRONKPI_NO_NETWORK=1 python3 -m unittest tests/test_guard_matrix.py
+
+  manifest:
+    name: Security / Manifest Verification
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Manifest suite
+        run: STRONKPI_NO_NETWORK=1 python3 -m unittest tests/test_manifest_verifier.py
+
+  installer:
+    name: Security / Installer Dry Run
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Installer dry run
+        run: STRONKPI_NO_NETWORK=1 zsh tests/test_install_dry_run.zsh
+
+  os-macos:
+    name: Compatibility / OS Matrix (macOS)
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Offline suite
+        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+
+  os-ubuntu:
+    name: Compatibility / OS Matrix (Ubuntu)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Offline suite
+        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+
+  wsl-manual:
+    name: Compatibility / WSL Manual Gate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Manual gate
+        run: 'printf "%s\n" "Record WSL evidence before public release."'
+

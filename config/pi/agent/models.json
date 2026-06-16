@@ -1,0 +1,93 @@
+{
+  "providers": {
+    "deepseek": {
+      "apiKey": "DEEPSEEK_API_KEY",
+      "baseUrl": "https://api.deepseek.com",
+      "compat": {
+        "requiresReasoningContentOnAssistantMessages": true,
+        "thinkingFormat": "deepseek"
+      },
+      "modelOverrides": {
+        "deepseek-v4-flash": {
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "reasoning": true
+        },
+        "deepseek-v4-pro": {
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "reasoning": true
+        }
+      }
+    },
+    "moonshotai": {
+      "name": "Moonshot AI",
+      "apiKey": "MOONSHOT_API_KEY",
+      "baseUrl": "https://api.moonshot.ai/v1"
+    },
+    "kimi-code": {
+      "name": "Kimi Code",
+      "api": "openai-completions",
+      "apiKey": "KIMI_CODE_API_KEY",
+      "baseUrl": "https://api.kimi.com/coding/v1",
+      "compat": {
+        "maxTokensField": "max_tokens",
+        "supportsDeveloperRole": false,
+        "supportsStore": false
+      },
+      "models": [
+        {
+          "id": "kimi-for-coding",
+          "name": "Kimi for Coding",
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "input": [
+            "text"
+          ]
+        }
+      ]
+    },
+    "alibaba-coding": {
+      "name": "Alibaba Cloud Coding Plan",
+      "api": "openai-completions",
+      "apiKey": "ALIBABA_CLOUD_CODING_PLAN_API_KEY",
+      "baseUrl": "https://coding-intl.dashscope.aliyuncs.com/v1",
+      "compat": {
+        "maxTokensField": "max_tokens",
+        "supportsDeveloperRole": false,
+        "supportsStore": false
+      },
+      "models": [
+        {
+          "id": "qwen3-coder-plus",
+          "name": "Qwen3 Coder Plus",
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "input": [
+            "text"
+          ]
+        },
+        {
+          "id": "qwen3-coder-next",
+          "name": "Qwen3 Coder Next",
+          "contextWindow": 256000,
+          "maxTokens": 65536,
+          "input": [
+            "text"
+          ]
+        },
+        {
+          "id": "qwen3.6-plus",
+          "name": "Qwen3.6 Plus Vision",
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      ]
+    }
+  }
+}
+
