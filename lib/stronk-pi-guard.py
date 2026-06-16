@@ -235,6 +235,18 @@ def require_int(data: dict[str, Any], key: str) -> int:
     return value
 
 
+def require_iso_utc(data: dict[str, Any], key: str) -> str:
+    value = require_string(data, key)
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise StronkPiError(f"manifest field {key!r} must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+        raise StronkPiError(f"manifest field {key!r} must be UTC")
+    return value
+
+
 def artifact_path(manifest_path: Path, item: dict[str, Any]) -> Path:
     local_path = item.get("artifactPath")
     url = item.get("artifactUrl")
@@ -321,8 +333,10 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         byte_size = require_int(raw_item, "byteSize")
         require_string(raw_item, "workflowRunId")
         require_string(raw_item, "attestation")
-        require_string(raw_item, "compatibilityVersion")
-        require_string(raw_item, "createdAt")
+        artifact_compatibility = require_string(raw_item, "compatibilityVersion")
+        require_iso_utc(raw_item, "createdAt")
+        if "sbom" in raw_item:
+            require_string(raw_item, "sbom")
         for label, value in (
             ("name", name),
             ("version", version),
@@ -336,7 +350,11 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             raise StronkPiError("sourceCommit must be a full 40-character lowercase SHA")
         if not re.fullmatch(r"[0-9a-f]{64}", sha256):
             raise StronkPiError("sha256 must be a lowercase SHA-256 hex digest")
-        check_public_http_url(release_url, "release URL")
+        release_check = check_public_http_url(release_url, "release URL")
+        if urlparse(release_check["url"]).scheme != "https":
+            raise StronkPiError("release URL must use HTTPS")
+        if artifact_compatibility != compatibility:
+            raise StronkPiError(f"wrong compatibilityVersion for {name}")
         path = artifact_path(manifest_path, raw_item)
         if not path.is_file():
             raise StronkPiError(f"missing artifact: {path}")
