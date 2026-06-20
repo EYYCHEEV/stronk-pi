@@ -9,7 +9,6 @@ import ipaddress
 import json
 import os
 import re
-import shlex
 import shutil
 import socket
 import stat
@@ -55,8 +54,20 @@ FLOATING_VERSION_RE = re.compile(
     r"(^latest$|@latest\b|^[~^*<>]=?|[xX*](?:\.|$)|\bHEAD\b)",
     re.IGNORECASE,
 )
+MCP_FLOATING_ARG_RE = re.compile(
+    (
+        r"(^latest$|@latest\b|releases/"
+        + "latest"
+        + r"|@[~^*<>]|@[0-9]+(?:\.[0-9]+)*\.[xX*]\b|@[xX*](?:\.|$))"
+    ),
+    re.IGNORECASE,
+)
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[/\\]")
+MCP_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi-setup"
+PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
 ENV_NAMES = (
     "DEEPSEEK_API_KEY",
     "MOONSHOT_API_KEY",
@@ -129,6 +140,11 @@ def fail_if_floating(label: str, value: str) -> None:
         raise StronkPiError(f"{label} uses a floating or mutable version reference")
 
 
+def fail_if_floating_mcp_arg(label: str, value: str) -> None:
+    if MCP_FLOATING_ARG_RE.search(value.strip()):
+        raise StronkPiError(f"{label} uses a floating or mutable version reference")
+
+
 def parse_ip_literal(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     try:
         return ipaddress.ip_address(value)
@@ -197,6 +213,21 @@ def state_root() -> Path:
     return root
 
 
+def xdg_config_home() -> Path:
+    raw = os.environ.get("XDG_CONFIG_HOME")
+    root = Path(raw).expanduser() if raw else Path.home() / ".config"
+    if not root.is_absolute():
+        raise StronkPiError(f"XDG_CONFIG_HOME must be absolute: {root}")
+    return root
+
+
+def default_mcp_registry_path() -> Path:
+    raw = os.environ.get("STRONKPI_MCP_REGISTRY") or os.environ.get("STRONK_PI_MCP_REGISTRY")
+    if raw:
+        return Path(raw).expanduser()
+    return xdg_config_home() / "mcp" / "registry.toml"
+
+
 def ensure_private_dir(path: Path) -> Path:
     if path.exists() and path.is_symlink():
         raise StronkPiError(f"directory must not be a symlink: {path}")
@@ -219,6 +250,361 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise StronkPiError(f"JSON file must contain an object: {path}")
     return data
+
+
+def strip_toml_comment(line: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(line):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\" and quote == '"':
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char == "#":
+            return line[:index].strip()
+    return line.strip()
+
+
+def split_top_level_commas(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(value):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\" and quote == '"':
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in "[{(":
+            depth += 1
+        elif char in "]})":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    tail = value[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def parse_toml_key(value: str) -> str:
+    value = value.strip()
+    if value.startswith('"') and value.endswith('"'):
+        return str(json.loads(value))
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+    return value
+
+
+def parse_simple_toml_value(value: str) -> Any:
+    value = value.strip()
+    if not value:
+        raise StronkPiError("empty TOML value")
+    if value.startswith('"') and value.endswith('"'):
+        return json.loads(value)
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        return [parse_simple_toml_value(part) for part in split_top_level_commas(inner)]
+    if value.startswith("{") and value.endswith("}"):
+        inner = value[1:-1].strip()
+        table: dict[str, Any] = {}
+        if not inner:
+            return table
+        for part in split_top_level_commas(inner):
+            if "=" not in part:
+                raise StronkPiError(f"invalid inline TOML table item: {part}")
+            key, item = part.split("=", 1)
+            table[parse_toml_key(key)] = parse_simple_toml_value(item)
+        return table
+    if re.fullmatch(r"[+-]?\d+", value):
+        return int(value)
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    raise StronkPiError(f"unsupported TOML value: {value}")
+
+
+def load_simple_toml(path: Path) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    current: dict[str, Any] = data
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = strip_toml_comment(raw_line)
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+            if not section:
+                raise StronkPiError(f"invalid TOML section at line {line_number}")
+            current = data
+            for part in section.split("."):
+                key = parse_toml_key(part)
+                child = current.setdefault(key, {})
+                if not isinstance(child, dict):
+                    raise StronkPiError(f"TOML section conflicts with scalar at line {line_number}")
+                current = child
+            continue
+        if "=" not in line:
+            raise StronkPiError(f"invalid TOML assignment at line {line_number}")
+        key, value = line.split("=", 1)
+        current[parse_toml_key(key)] = parse_simple_toml_value(value)
+    return data
+
+
+def load_mcp_registry_toml(path: Path) -> dict[str, Any]:
+    try:
+        import tomllib  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        return load_simple_toml(path)
+    try:
+        with path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except tomllib.TOMLDecodeError as exc:  # type: ignore[name-defined]
+        raise StronkPiError(f"invalid MCP registry TOML: {exc}") from exc
+    if not isinstance(data, dict):
+        raise StronkPiError("MCP registry TOML must contain a table")
+    return data
+
+
+def static_http_url_check(value: str, label: str) -> None:
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise StronkPiError(f"{label} must be an http(s) URL")
+    host = (parsed.hostname or "").strip().lower().rstrip(".")
+    if not host:
+        raise StronkPiError(f"{label} URL has no host")
+    if host in BLOCKED_WEB_HOSTS or any(host.endswith(suffix) for suffix in BLOCKED_WEB_SUFFIXES):
+        raise StronkPiError(f"{label} private/local host denied: {host}")
+    literal = parse_ip_literal(host)
+    if literal is not None:
+        assert_public_ip(literal, label)
+
+
+def string_has_secret(value: str) -> bool:
+    return any(pattern.search(value) for pattern in SECRET_VALUE_PATTERNS)
+
+
+def contains_personal_path(value: str) -> bool:
+    text = str(value)
+    home = str(Path.home())
+    if home not in {"", "/"} and home in text:
+        return True
+    return PERSONAL_PATH_RE.search(text) is not None
+
+
+def load_mcp_tools(path: Path) -> list[str]:
+    tools: list[str] = []
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if not MCP_SERVER_NAME_RE.fullmatch(line):
+            raise StronkPiError(f"invalid MCP tool name at {path}:{line_number}: {line}")
+        tools.append(line)
+    return tools
+
+
+def validate_mcp_registry(
+    path: Path,
+    *,
+    tools_path: Path | None = None,
+    allow_missing: bool = False,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": str(path),
+        "resolvedPath": None,
+        "symlink": False,
+        "ok": False,
+        "serverCount": 0,
+        "servers": [],
+        "selectedTools": [],
+        "env": {},
+        "warnings": [],
+        "errors": [],
+    }
+    errors = result["errors"]
+    warnings = result["warnings"]
+
+    if not path.exists():
+        message = f"MCP registry missing: {path}"
+        if allow_missing:
+            warnings.append(message)
+            result["ok"] = True
+            return result
+        errors.append(message)
+        return result
+    registry_file = path
+    if path.is_symlink():
+        result["symlink"] = True
+        registry_file = path.resolve()
+        result["resolvedPath"] = str(registry_file)
+    if not registry_file.is_file():
+        errors.append(f"MCP registry is not a regular file: {path}")
+        return result
+    stat_result = registry_file.stat()
+    if stat_result.st_uid != os.getuid():
+        errors.append(f"MCP registry is not owned by the current user: {path}")
+    mode = stat_result.st_mode
+    if mode & stat.S_IWOTH or mode & stat.S_IWGRP:
+        errors.append(f"MCP registry must not be group/world writable: {path}")
+
+    try:
+        data = load_mcp_registry_toml(registry_file)
+    except (OSError, StronkPiError) as exc:
+        errors.append(str(exc))
+        return result
+
+    if data.get("version") != 1:
+        errors.append("MCP registry version must be 1")
+    servers = data.get("servers")
+    if not isinstance(servers, dict) or not servers:
+        errors.append("MCP registry must define at least one [servers.<name>] table")
+        return result
+
+    selected: list[str] = []
+    if tools_path is None:
+        default_tools = Path.cwd() / ".mcp-tools"
+        tools_path = default_tools if default_tools.exists() else None
+    if tools_path is not None:
+        if not tools_path.exists():
+            errors.append(f"MCP tools allowlist missing: {tools_path}")
+        elif tools_path.is_symlink():
+            errors.append(f"MCP tools allowlist must not be a symlink: {tools_path}")
+        else:
+            try:
+                selected = load_mcp_tools(tools_path)
+                result["selectedTools"] = selected
+            except (OSError, StronkPiError) as exc:
+                errors.append(str(exc))
+
+    selected_set = set(selected)
+    server_names: list[str] = []
+    env_status: dict[str, str] = {}
+    for name, server in sorted(servers.items()):
+        if not isinstance(name, str) or not MCP_SERVER_NAME_RE.fullmatch(name):
+            errors.append(f"invalid MCP server name: {name}")
+            continue
+        server_names.append(name)
+        if not isinstance(server, dict):
+            errors.append(f"MCP server {name} must be a table")
+            continue
+        command = server.get("command")
+        if not isinstance(command, str) or not command.strip():
+            errors.append(f"MCP server {name} command must be a non-empty string")
+        elif "/" not in command and shutil.which(command) is None:
+            errors.append(f"MCP server {name} command is not on PATH: {command}")
+        elif contains_personal_path(command):
+            errors.append(f"MCP server {name} command contains a personal path")
+
+        args = server.get("args", [])
+        if args is None:
+            args = []
+        if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
+            errors.append(f"MCP server {name} args must be a list of strings")
+            args = []
+        for arg in args:
+            if contains_personal_path(arg):
+                errors.append(f"MCP server {name} arg contains a personal path")
+            if string_has_secret(arg):
+                errors.append(f"MCP server {name} arg contains a secret-like value")
+            if "://" in arg:
+                try:
+                    static_http_url_check(arg, f"MCP server {name} URL")
+                except StronkPiError as exc:
+                    errors.append(str(exc))
+            try:
+                fail_if_floating_mcp_arg(f"MCP server {name} arg", arg)
+            except StronkPiError as exc:
+                errors.append(str(exc))
+
+        env_vars = server.get("env_vars", [])
+        if env_vars is None:
+            env_vars = []
+        if not isinstance(env_vars, list) or not all(isinstance(item, str) for item in env_vars):
+            errors.append(f"MCP server {name} env_vars must be a list of strings")
+            env_vars = []
+        for env_name in env_vars:
+            if not ENV_NAME_RE.fullmatch(env_name):
+                errors.append(f"MCP server {name} env var name is invalid: {env_name}")
+                continue
+            status = "set" if os.environ.get(env_name) else "missing"
+            env_status[f"{name}.{env_name}"] = status
+            if status == "missing" and name in selected_set:
+                errors.append(f"MCP server {name} selected env var is missing: {env_name}")
+            elif status == "missing":
+                warnings.append(f"MCP server {name} env var is missing: {env_name}")
+
+        env = server.get("env", {})
+        if env is None:
+            env = {}
+        if not isinstance(env, dict):
+            errors.append(f"MCP server {name} env must be a table")
+            env = {}
+        for key, value in env.items():
+            if not isinstance(key, str) or not ENV_NAME_RE.fullmatch(key):
+                errors.append(f"MCP server {name} env key is invalid: {key}")
+            if SECRET_KEY_PATTERN.search(str(key)):
+                errors.append(f"MCP server {name} env must not store secret-like key {key}; use env_vars")
+            if isinstance(value, str) and string_has_secret(value):
+                errors.append(f"MCP server {name} env contains a secret-like value")
+
+        timeout = server.get("startup_timeout_sec")
+        if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
+            errors.append(f"MCP server {name} startup_timeout_sec must be a positive integer")
+
+    for selected_name in selected:
+        if selected_name not in servers:
+            errors.append(f"MCP selected tool is not in registry: {selected_name}")
+
+    result["serverCount"] = len(server_names)
+    result["servers"] = server_names
+    result["env"] = env_status
+    result["ok"] = not errors
+    return result
+
+
+def check_network_access(url: str) -> dict[str, Any]:
+    result: dict[str, Any] = {"url": url, "ok": False, "skipped": False}
+    if os.environ.get("STRONKPI_NO_NETWORK") == "1":
+        result["skipped"] = True
+        result["reason"] = "STRONKPI_NO_NETWORK=1"
+        return result
+    checked = check_public_http_url(url, "doctor network URL")
+    request = urllib.request.Request(checked["url"], method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result["status"] = getattr(response, "status", None)
+            result["finalUrl"] = response.geturl()
+    except urllib.error.HTTPError as exc:
+        if exc.code < 500:
+            result["status"] = exc.code
+            result["finalUrl"] = exc.geturl()
+        else:
+            raise StronkPiError(f"network check failed with HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise StronkPiError(f"network check failed: {exc.reason}") from exc
+    result["host"] = checked["hostname"]
+    result["addresses"] = checked["addresses"]
+    result["ok"] = True
+    return result
 
 
 def require_string(data: dict[str, Any], key: str) -> str:
@@ -276,7 +662,7 @@ def artifact_path(manifest_path: Path, item: dict[str, Any]) -> Path:
 
 
 def download_artifact(url: str) -> Path:
-    request = urllib.request.Request(url, headers={"User-Agent": f"stronkpi/{VERSION}"})
+    request = urllib.request.Request(url, headers={"User-Agent": f"stronkpi-setup/{VERSION}"})
     with urllib.request.urlopen(request, timeout=30) as response:
         final_url = response.geturl()
         checked = check_public_http_url(final_url, "artifact redirect URL")
@@ -400,7 +786,7 @@ def install_artifacts(results: list[ArtifactResult], dry_run: bool) -> None:
 def cmd_validate(args: argparse.Namespace) -> int:
     root = setup_root()
     required = [
-        root / "bin" / "stronkpi",
+        root / "bin" / "stronkpi-setup",
         root / "install.sh",
         root / "lib" / "stronk-pi-guard.py",
         root / "config" / "pi" / "agent" / "AGENTS.md",
@@ -419,31 +805,89 @@ def cmd_validate(args: argparse.Namespace) -> int:
         root / "manifests" / "current.json",
     ):
         load_json(json_path)
-    forbidden_bins = [root / "bin" / "sp", root / "bin" / "pi"]
+    forbidden_bins = [
+        root / "bin" / "sp",
+        root / "bin" / "pi",
+        root / "bin" / "stronkpi",
+        root / "bin" / "stronk-pi-setup",
+    ]
     found = [path.name for path in forbidden_bins if path.exists()]
     if found:
         raise StronkPiError("forbidden compatibility commands present: " + ", ".join(found))
-    print("stronkpi validate: ok")
+    print("stronkpi-setup validate: ok")
     return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    registry_path = Path(args.mcp_registry).expanduser()
+    if not registry_path.is_absolute():
+        registry_path = (Path.cwd() / registry_path).resolve()
+    tools_path = None
+    if args.mcp_tools:
+        tools_path = Path(args.mcp_tools).expanduser()
+        if not tools_path.is_absolute():
+            tools_path = (Path.cwd() / tools_path).resolve()
+
+    dependencies = {
+        "python3": {
+            "ok": True,
+            "path": shutil.which("python3") or sys.executable,
+            "version": sys.version.split()[0],
+        },
+        "curl": {
+            "ok": shutil.which("curl") is not None,
+            "path": shutil.which("curl"),
+            "required": bool(args.check_network),
+        },
+    }
+    errors: list[str] = []
+    if args.check_network and not dependencies["curl"]["ok"]:
+        errors.append("curl is not on PATH for operator-requested network checks")
+    mcp = validate_mcp_registry(
+        registry_path,
+        tools_path=tools_path,
+        allow_missing=args.allow_missing_mcp,
+    )
+    errors.extend(str(error) for error in mcp.get("errors", []))
+
+    network: dict[str, Any] = {
+        "url": args.network_url,
+        "ok": False,
+        "skipped": True,
+        "reason": "not requested",
+    }
+    if args.check_network:
+        try:
+            network = check_network_access(args.network_url)
+        except StronkPiError as exc:
+            network = {
+                "url": args.network_url,
+                "ok": False,
+                "skipped": False,
+                "error": str(exc),
+            }
+            errors.append(str(exc))
+
     env_status = {name: ("set" if os.environ.get(name) else "missing") for name in ENV_NAMES}
     payload = {
-        "ok": True,
+        "ok": not errors,
         "version": VERSION,
         "setupRoot": str(setup_root()),
         "stateRoot": str(state_root()),
         "noNetwork": os.environ.get("STRONKPI_NO_NETWORK") == "1",
+        "dependencies": dependencies,
         "env": env_status,
+        "mcpRegistry": mcp,
+        "network": network,
+        "errors": errors,
     }
     if args.json:
         json_out(payload)
     else:
-        print("stronkpi doctor: ok")
+        print("stronkpi-setup doctor: ok" if payload["ok"] else "stronkpi-setup doctor: failed")
         for key, value in payload.items():
             print(f"{key}={redact(value)}")
-    return 0
+    return 0 if payload["ok"] else 1
 
 
 def cmd_update(args: argparse.Namespace) -> int:
@@ -453,7 +897,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     results = verify_manifest(manifest_path)
     install_artifacts(results, args.dry_run)
     mode = "dry-run" if args.dry_run else "installed"
-    print(f"stronkpi update: {mode} verified {len(results)} artifact(s)")
+    print(f"stronkpi-setup update: {mode} verified {len(results)} artifact(s)")
     for result in results:
         print(f"- {result.name} {result.version} {result.sha256}")
     return 0
@@ -466,26 +910,32 @@ def cmd_install(args: argparse.Namespace) -> int:
     if not prefix.is_absolute():
         raise StronkPiError("--prefix must be absolute")
     bin_dir = prefix / "bin"
-    target = bin_dir / "stronkpi"
+    setup_target = bin_dir / "stronkpi-setup"
     if args.dry_run:
-        print(f"stronkpi install: would install {target}")
-        print("stronkpi install: no compatibility aliases will be created")
+        print(f"stronkpi-setup install: would install {setup_target}")
+        print("stronkpi-setup install: will not install or wrap stronkpi")
+        print("stronkpi-setup install: no compatibility aliases will be created")
         return 0
     bin_dir.mkdir(parents=True, exist_ok=True)
-    target.write_text(
+    setup_target.write_text(
         "\n".join(
             [
-                "#!/usr/bin/env zsh",
-                "set -euo pipefail",
-                f"export STRONKPI_SETUP_ROOT={shlex.quote(str(root))}",
-                f"exec python3 {shlex.quote(str(guard))} \"$@\"",
+                "#!/usr/bin/env python3",
+                "from __future__ import annotations",
+                "",
+                "import os",
+                "import runpy",
+                "",
+                f"os.environ.setdefault('STRONKPI_SETUP_ROOT', {str(root)!r})",
+                f"runpy.run_path({str(guard)!r}, run_name='__main__')",
                 "",
             ]
         ),
         encoding="utf-8",
     )
-    os.chmod(target, 0o755)
-    print(f"stronkpi install: installed {target}")
+    os.chmod(setup_target, 0o755)
+    print(f"stronkpi-setup install: installed {setup_target}")
+    print("stronkpi-setup install: left stronkpi untouched")
     return 0
 
 
@@ -493,13 +943,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.dry_run:
         raise StronkPiError("live provider/runtime sessions are not started by setup validation")
     cmd_validate(args)
-    print("stronkpi run: dry-run ok")
+    print("stronkpi-setup run: dry-run ok")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="stronkpi")
-    parser.add_argument("--version", action="version", version=f"stronkpi {VERSION}")
+    parser = argparse.ArgumentParser(prog="stronkpi-setup")
+    parser.add_argument("--version", action="version", version=f"stronkpi-setup {VERSION}")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("validate").set_defaults(func=cmd_validate)
@@ -507,6 +957,11 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
     doctor.add_argument("--redact", action="store_true")
+    doctor.add_argument("--mcp-registry", default=str(default_mcp_registry_path()))
+    doctor.add_argument("--mcp-tools")
+    doctor.add_argument("--allow-missing-mcp", action="store_true")
+    doctor.add_argument("--check-network", action="store_true")
+    doctor.add_argument("--network-url", default=DEFAULT_NETWORK_URL)
     doctor.set_defaults(func=cmd_doctor)
 
     update = sub.add_parser("update")
@@ -534,7 +989,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args))
     except (StronkPiError, urllib.error.URLError, OSError) as exc:
-        print(f"stronkpi: {redact(str(exc))}", file=sys.stderr)
+        print(f"stronkpi-setup: {redact(str(exc))}", file=sys.stderr)
         return 1
 
 

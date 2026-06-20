@@ -1,9 +1,0 @@
-#!/usr/bin/env zsh
-set -euo pipefail
-
-self_path="${0:A}"
-repo_root="${self_path:h:h}"
-export STRONKPI_SETUP_ROOT="$repo_root"
-
-exec python3 "$repo_root/lib/stronk-pi-guard.py" "$@"
-
