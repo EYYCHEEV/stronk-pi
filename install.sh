@@ -1,31 +1,34 @@
-#!/usr/bin/env zsh
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-self_path="${0:A}"
-repo_root="${self_path:h}"
+script_path=$0
+case "$script_path" in
+  */*) ;;
+  *) script_path=$(command -v "$script_path") ;;
+esac
+repo_root=$(CDPATH= cd "$(dirname "$script_path")" && pwd -P)
 
 usage() {
   cat <<'EOF'
 usage: ./install.sh [--dry-run] [--prefix PATH]
 
-Installs the canonical stronkpi command. The installer never creates short
-aliases and never starts provider sessions.
+Installs stronkpi-setup for setup/validation. The guarded harness command is
+stronkpi and is not installed or wrapped by this setup repository.
 EOF
 }
 
-args=()
-while (( $# > 0 )); do
-  case "$1" in
+if ! command -v python3 >/dev/null 2>&1; then
+  printf '%s\n' "install.sh: python3 is required but was not found on PATH" >&2
+  exit 1
+fi
+
+for arg do
+  case "$arg" in
     -h|--help)
       usage
       exit 0
       ;;
-    *)
-      args+=("$1")
-      shift
-      ;;
   esac
 done
 
-exec "$repo_root/bin/stronkpi" install "${args[@]}"
-
+exec "$repo_root/bin/stronkpi-setup" install "$@"

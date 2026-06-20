@@ -16,7 +16,7 @@
   ],
   "interface": {
     "displayName": "Stronk Pi Setup",
-    "shortDescription": "Install and validate Stronk Pi through the canonical stronkpi command.",
+    "shortDescription": "Install and validate Stronk Pi through the setup command.",
     "longDescription": "Provides a public setup repository with manifest verification, offline validation, guardrail checks, and redacted diagnostics for Stronk Pi.",
     "developerName": "EYYCHEEV",
     "category": "Developer Tools",
@@ -27,7 +27,6 @@
       "offline-tests"
     ],
     "brandColor": "#245B6B",
-    "defaultPrompt": "Use stronkpi validate to verify this Stronk Pi setup."
+    "defaultPrompt": "Use stronkpi-setup validate to verify this Stronk Pi setup."
   }
 }
-

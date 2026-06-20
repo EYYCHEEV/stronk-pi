@@ -12,7 +12,7 @@
     "alibaba-coding/qwen3.6-plus"
   ],
   "quietStartup": true,
-  "shellPath": "/bin/zsh",
+  "shellPath": "/bin/sh",
   "httpIdleTimeoutMs": 1800000,
   "retry": {
     "provider": {
@@ -23,4 +23,3 @@
     "~/.agents/skills"
   ]
 }
-

@@ -17,11 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-      - name: Ensure zsh
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Offline suite
-        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+        run: STRONKPI_NO_NETWORK=1 sh tests/run_offline.sh
 
   guardrails:
     name: Security / Guardrails
@@ -47,11 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-      - name: Ensure zsh
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Installer dry run
-        run: STRONKPI_NO_NETWORK=1 zsh tests/test_install_dry_run.zsh
+        run: STRONKPI_NO_NETWORK=1 sh tests/test_install_dry_run.sh
 
   os-macos:
     name: Compatibility / OS Matrix (macOS)
@@ -60,7 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - name: Offline suite
-        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+        run: STRONKPI_NO_NETWORK=1 sh tests/run_offline.sh
 
   os-ubuntu:
     name: Compatibility / OS Matrix (Ubuntu)
@@ -68,11 +62,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
-      - name: Ensure zsh
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - name: Offline suite
-        run: STRONKPI_NO_NETWORK=1 zsh tests/run_offline.zsh
+        run: STRONKPI_NO_NETWORK=1 sh tests/run_offline.sh
 
   wsl-manual:
     name: Compatibility / WSL Manual Gate

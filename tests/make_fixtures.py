@@ -100,7 +100,7 @@ def main() -> None:
     write_tgz(
         good,
         {
-            "package/bin/stronkpi": b"#!/usr/bin/env zsh\nprint -r -- fixture\n",
+            "package/bin/stronkpi": b"#!/bin/sh\nprintf '%s\\n' fixture\n",
             "package/lib/stronk-pi-guard.py": b"print('fixture')\n",
             "package/package.json": b'{"name":"stronk-pi-plugin","version":"0.1.0"}\n',
         },

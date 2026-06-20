@@ -3,7 +3,7 @@
     {
       "artifactPath": "../artifacts/stronk-pi-plugin-0.1.0.tgz",
       "attestation": "fixture-attestation",
-      "byteSize": 246,
+      "byteSize": 238,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
       "immutableTag": "stronk-pi-v0.1.0",

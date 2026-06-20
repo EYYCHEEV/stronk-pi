@@ -22,7 +22,6 @@ PUBLIC_PATHS = [
 ]
 
 FORBIDDEN_SIMPLE = [
-    "/Users/eyy",
     "agentic-workstation",
     "STRONK_PI_DEV_OVERRIDES",
     "STRONK_PI_PLUGIN_REPO",
@@ -39,6 +38,14 @@ FORBIDDEN_SIMPLE = [
     "curl | bash",
     "wget | sh",
     "unsafe eval",
+    "/bin/zsh",
+    "env zsh",
+    "zsh -n",
+    "zsh tests/",
+    "run_offline.zsh",
+    "test_install_dry_run.zsh",
+    "test_dogfood.zsh",
+    "Ensure zsh",
 ]
 
 ALLOWED_SUBSTRINGS = {
@@ -52,6 +59,11 @@ ALLOWED_SUBSTRINGS = {
 COMMAND_PATTERNS = [
     re.compile(r"`(?:sp|pi)`"),
     re.compile(r"(^|[\s;|&])(?:sp|pi)(?:\s|$)"),
+]
+
+CONSTRUCTED_PRIVATE_PATH_PATTERNS = [
+    re.compile(r"['\"]/Users/['\"]\s*\+"),
+    re.compile(r"['\"]/home/['\"]\s*\+"),
 ]
 
 
@@ -89,6 +101,16 @@ class PublicSurfaceTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8", errors="ignore")
             rel = path.relative_to(ROOT).as_posix()
             for pattern in COMMAND_PATTERNS:
+                if pattern.search(text):
+                    offenders.append(f"{rel}: {pattern.pattern}")
+        self.assertEqual(offenders, [])
+
+    def test_no_constructed_private_path_markers(self):
+        offenders: list[str] = []
+        for path in public_files():
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            rel = path.relative_to(ROOT).as_posix()
+            for pattern in CONSTRUCTED_PRIVATE_PATH_PATTERNS:
                 if pattern.search(text):
                     offenders.append(f"{rel}: {pattern.pattern}")
         self.assertEqual(offenders, [])
