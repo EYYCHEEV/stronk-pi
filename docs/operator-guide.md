@@ -26,6 +26,8 @@ STRONKPI_NO_NETWORK=1 sh tests/run_offline.sh
 
 Use `stronkpi-setup refresh-config` after changing distribution-owned runtime config
 templates such as `config/pi/agent/settings.base.json`.
+The shipped coding default is `kimi-coding/kimi-for-coding` with Pi
+`defaultThinkingLevel` set to `xhigh`.
 Add `--json` for automation.
 
 ## Fixture Manifest Verification

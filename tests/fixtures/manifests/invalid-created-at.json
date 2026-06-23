@@ -34,8 +34,8 @@
     },
     "localRoleManifestPath": "~/.stronk-pi/config/roles.local.toml",
     "models": {
-      "default": "kimi-coding/kimi-for-coding",
-      "vision": "kimi-coding/kimi-for-coding"
+      "default": "kimi-coding/kimi-for-coding:xhigh",
+      "vision": "kimi-coding/kimi-for-coding:xhigh"
     },
     "packagePins": {
       "ask_user": {
