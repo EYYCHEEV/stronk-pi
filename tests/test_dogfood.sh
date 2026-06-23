@@ -8,7 +8,7 @@ fi
 
 setup_resolved=$(command -v stronkpi-setup)
 case "$setup_resolved" in
-  */stronk-pi-setup/bin/stronkpi-setup|*/.local/bin/stronkpi-setup)
+  */stronk-pi/bin/stronkpi-setup|*/stronk-pi-setup/bin/stronkpi-setup|*/.local/bin/stronkpi-setup)
     ;;
   *)
     printf '%s\n' "unexpected stronkpi-setup path: $setup_resolved" >&2

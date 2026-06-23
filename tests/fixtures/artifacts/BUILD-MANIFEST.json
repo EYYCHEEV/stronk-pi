@@ -3,7 +3,8 @@
     "archive-traversal.tgz",
     "hardlink-escape.tgz",
     "stronk-pi-plugin-0.1.0.tgz",
-    "symlink-escape.tgz"
+    "symlink-escape.tgz",
+    "wrong-package-identity.tgz"
   ],
   "createdAt": "2026-06-16T00:00:00Z",
   "sourceCommit": "0123456789abcdef0123456789abcdef01234567"

@@ -12,8 +12,8 @@ usage() {
   cat <<'EOF'
 usage: ./install.sh [--dry-run] [--prefix PATH]
 
-Installs stronkpi-setup for setup/validation. The guarded harness command is
-stronkpi and is not installed or wrapped by this setup repository.
+Installs stronkpi-setup for setup/validation and stronkpi for the guarded
+portable harness. Short compatibility aliases are not created.
 EOF
 }
 

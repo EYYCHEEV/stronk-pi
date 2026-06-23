@@ -3,26 +3,77 @@
     {
       "artifactPath": "../artifacts/stronk-pi-plugin-0.1.0.tgz",
       "attestation": "fixture-attestation",
-      "byteSize": 238,
+      "byteSize": 301,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
-      "immutableTag": "stronk-pi-v0.1.0",
+      "immutableTag": "stronk-pi-plugin-v0.1.0",
       "name": "stronk-pi-plugin",
       "provenance": {
-        "immutableTag": "stronk-pi-v0.1.0",
+        "immutableTag": "stronk-pi-plugin-v0.1.0",
         "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
-        "sourceRepo": "EYYCHEEV/stronk-pi",
+        "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
         "workflowRunId": "fixture-run-1"
       },
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.1.0",
       "sbom": "fixture-sbom",
-      "sha256": "dd35f72323410edad9b2118b3a3da526bbab0f7dc5f52ac29117c12e0d77e5c2",
+      "sha256": "ed8f09e4f1cf626af543828e1bec85873951c7c6a898dd0615e796184c90ce1a",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
-      "sourceRepo": "EYYCHEEV/stronk-pi",
+      "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
       "version": "0.1.0",
       "workflowRunId": "fixture-run-1"
     }
   ],
+  "bundle": {
+    "configSchemaVersion": 1,
+    "defaultConfigPath": "~/.stronk-pi/config/defaults.toml",
+    "defaultRoleManifestPath": "~/.stronk-pi/config/roles.toml",
+    "generatedAgentsPath": "~/.stronk-pi/agent/agents",
+    "harness": {
+      "command": "stronkpi",
+      "owner": "stronk-pi"
+    },
+    "localRoleManifestPath": "~/.stronk-pi/config/roles.local.toml",
+    "models": {
+      "default": "kimi-code/kimi-for-coding",
+      "vision": "kimi-code/kimi-for-coding"
+    },
+    "packagePins": {
+      "ask_user": {
+        "name": "pi-ask-user",
+        "version": "0.8.0"
+      },
+      "esbuild": {
+        "name": "esbuild",
+        "version": "0.28.0"
+      },
+      "intercom": {
+        "name": "pi-intercom",
+        "version": "0.6.0"
+      },
+      "jiti": {
+        "name": "jiti",
+        "version": "2.7.0"
+      },
+      "mcp_adapter": {
+        "name": "pi-mcp-adapter",
+        "version": "2.5.3"
+      },
+      "subagents": {
+        "name": "pi-subagents",
+        "version": "0.22.0"
+      },
+      "tsx": {
+        "name": "tsx",
+        "version": "4.22.4"
+      },
+      "typebox": {
+        "name": "typebox",
+        "version": "1.1.39"
+      }
+    },
+    "roleTemplatesPath": "~/.stronk-pi/config/role-templates",
+    "stateRoot": "~/.stronk-pi"
+  },
   "compatibilityVersion": "stronkpi-setup-v1",
   "schemaVersion": 1
 }

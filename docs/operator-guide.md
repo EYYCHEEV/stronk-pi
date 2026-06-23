@@ -6,8 +6,10 @@
 | --- | --- | --- |
 | Validate setup files and host assumptions | `stronkpi-setup validate` | Setup-only; does not launch Pi. |
 | Diagnose setup and MCP registry state | `stronkpi-setup doctor` | Redacts secret-like values. |
+| Refresh managed runtime config | `stronkpi-setup refresh-config` | Updates `~/.stronk-pi/config`, `~/.stronk-pi/agent/settings.json`, and generated role Markdown. |
 | Verify/update pinned artifacts | `stronkpi-setup update` | Uses manifests; respects `STRONKPI_NO_NETWORK=1`. |
-| Launch the guarded Pi experience | `stronkpi` | Harness command owned outside this setup repo. |
+| Validate guarded harness config | `stronkpi --validate-only` | Checks the harness without launching an interactive Pi session. |
+| Launch the guarded Pi experience | `stronkpi` | Portable harness installed by the Stronk Pi distribution repo. |
 
 Stronk Pi is the guarded Pi Coding Agent distribution. This repo owns setup and
 manifest validation; the `stronkpi` harness owns runtime launch behavior.
@@ -17,8 +19,14 @@ manifest validation; the `stronkpi` harness owns runtime launch behavior.
 ```sh
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup validate
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --json --allow-missing-mcp
+STRONKPI_NO_NETWORK=1 bin/stronkpi-setup refresh-config --dry-run
+STRONKPI_NO_NETWORK=1 bin/stronkpi --validate-only
 STRONKPI_NO_NETWORK=1 sh tests/run_offline.sh
 ```
+
+Use `stronkpi-setup refresh-config` after changing distribution-owned runtime config
+templates such as `config/pi/agent/settings.base.json`.
+Add `--json` for automation.
 
 ## Fixture Manifest Verification
 
@@ -36,9 +44,16 @@ STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --mcp-registry ~/.config/mcp/reg
 
 The MCP registry check validates registry TOML, server command availability,
 selected tool names, selected server environment variables, unsafe URLs,
-floating package refs, and accidental personal absolute paths. It does not
-generate the runtime MCP overlay; overlay generation belongs to the `stronkpi`
-harness at launch time.
+floating package refs, and accidental personal absolute paths. Runtime MCP
+loading is not enabled until the guarded launcher includes a verified MCP
+adapter artifact.
+
+## Local Role Overlay
+
+Public defaults are installed to `~/.stronk-pi/config/roles.toml`.
+Private local preferences can be placed in
+`~/.stronk-pi/config/roles.local.toml`.
+The overlay is optional and is never required for public setup.
 
 ## Release Readiness
 
