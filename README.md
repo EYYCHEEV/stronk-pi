@@ -81,6 +81,8 @@ The canonical runtime state and config root is `~/.stronk-pi/`.
 It also refreshes setup-managed Pi runtime config under
 `~/.stronk-pi/agent/`, including `settings.json`, `models.json`, and
 `AGENTS.md`.
+The public default coding model is `kimi-coding/kimi-for-coding` with Pi
+`defaultThinkingLevel` set to `xhigh`.
 Use `--dry-run` to preview changed paths and `--json` for automation.
 
 `stronkpi-setup update` verifies the release manifest, also refreshes the same

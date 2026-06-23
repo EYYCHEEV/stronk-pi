@@ -446,6 +446,8 @@ class ManifestVerifierTests(unittest.TestCase):
             settings = json.loads((tmp / "home" / ".stronk-pi" / "agent" / "settings.json").read_text(encoding="utf-8"))
             self.assertEqual(settings["defaultProvider"], "kimi-coding")
             self.assertEqual(settings["defaultModel"], "kimi-for-coding")
+            self.assertEqual(settings["defaultThinkingLevel"], "xhigh")
+            self.assertIn("kimi-coding/kimi-for-coding:xhigh", settings["enabledModels"])
 
 
 if __name__ == "__main__":

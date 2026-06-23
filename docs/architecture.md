@@ -46,6 +46,8 @@ It is runtime output and must not be tracked as public source.
 `stronkpi-setup refresh-config` is the explicit operator command for writing
 the setup-managed defaults, Pi agent settings, model config, role templates,
 and generated role Markdown into `~/.stronk-pi/` without launching Pi.
+The shipped coding default is `kimi-coding/kimi-for-coding` with Pi
+`defaultThinkingLevel` set to `xhigh`.
 
 ## MCP Registry Doctor
 

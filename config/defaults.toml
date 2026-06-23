@@ -13,8 +13,8 @@ subagent_adapter = "intercom"
 search_provider = "exa"
 
 [models]
-default = "kimi-coding/kimi-for-coding"
-vision = "kimi-coding/kimi-for-coding"
+default = "kimi-coding/kimi-for-coding:xhigh"
+vision = "kimi-coding/kimi-for-coding:xhigh"
 
 [roles]
 manifest = "~/.stronk-pi/config/roles.toml"
