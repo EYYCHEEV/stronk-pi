@@ -35,8 +35,8 @@ def bundle_contract() -> dict:
             "owner": "stronk-pi",
         },
         "models": {
-            "default": "kimi-code/kimi-for-coding",
-            "vision": "kimi-code/kimi-for-coding",
+            "default": "kimi-coding/kimi-for-coding",
+            "vision": "kimi-coding/kimi-for-coding",
         },
         "packagePins": {
             "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.5.3"},

@@ -25,28 +25,6 @@
       "apiKey": "MOONSHOT_API_KEY",
       "baseUrl": "https://api.moonshot.ai/v1"
     },
-    "kimi-code": {
-      "name": "Kimi Code",
-      "api": "openai-completions",
-      "apiKey": "KIMI_CODE_API_KEY",
-      "baseUrl": "https://api.kimi.com/coding/v1",
-      "compat": {
-        "maxTokensField": "max_tokens",
-        "supportsDeveloperRole": false,
-        "supportsStore": false
-      },
-      "models": [
-        {
-          "id": "kimi-for-coding",
-          "name": "Kimi for Coding",
-          "contextWindow": 128000,
-          "maxTokens": 16384,
-          "input": [
-            "text"
-          ]
-        }
-      ]
-    },
     "alibaba-coding": {
       "name": "Alibaba Cloud Coding Plan",
       "api": "openai-completions",
@@ -90,4 +68,3 @@
     }
   }
 }
-

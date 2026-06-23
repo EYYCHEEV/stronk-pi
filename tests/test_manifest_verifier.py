@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -169,9 +170,9 @@ class ManifestVerifierTests(unittest.TestCase):
                 os.environ["STRONKPI_NO_NETWORK"] = old
 
     def test_harness_parser_passes_pi_flags_through(self):
-        args = guard.parse_harness_args(["-p", "smoke", "--model", "kimi-code/kimi-for-coding"])
+        args = guard.parse_harness_args(["-p", "smoke", "--model", "kimi-coding/kimi-for-coding"])
         self.assertFalse(args.validate_only)
-        self.assertEqual(args.pi_args, ["-p", "smoke", "--model", "kimi-code/kimi-for-coding"])
+        self.assertEqual(args.pi_args, ["-p", "smoke", "--model", "kimi-coding/kimi-for-coding"])
 
     def test_harness_parser_blocks_validate_passthrough_mix(self):
         with self.assertRaisesRegex(guard.StronkPiError, "do not accept"):
@@ -348,6 +349,76 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_text(encoding="utf-8").strip(), str(legacy_target))
 
+    def test_install_bundle_migrates_legacy_setup_managed_marker(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            (root / "config").mkdir(parents=True)
+            target = root / "config" / "defaults.toml"
+            target.write_text('schema_version = 1\nmanaged_by = "stronk-pi-setup"\n', encoding="utf-8")
+
+            result = guard.install_bundle_defaults(root=root, dry_run=False)
+
+            self.assertIn(str(target), result["changed"])
+            text = target.read_text(encoding="utf-8")
+            self.assertIn('managed_by = "stronk-pi"', text)
+            self.assertNotIn('managed_by = "stronk-pi-setup"', text)
+
+    def test_install_bundle_refuses_unmanaged_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            (root / "config").mkdir(parents=True)
+            target = root / "config" / "defaults.toml"
+            target.write_text("schema_version = 1\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(guard.StronkPiError, "refusing to overwrite unmanaged file"):
+                guard.install_bundle_defaults(root=root, dry_run=False)
+
+    def test_install_artifacts_replaces_existing_plugin_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            artifact_root = tmp / "artifact-root"
+            package_root = artifact_root / "package"
+            package_root.mkdir(parents=True)
+            (package_root / "package.json").write_text(
+                json.dumps({"name": "stronk-pi-plugin", "version": "0.1.0"}) + "\n",
+                encoding="utf-8",
+            )
+            (package_root / "new.txt").write_text("new\n", encoding="utf-8")
+            archive_path = tmp / "stronk-pi-plugin-0.1.0.tgz"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                archive.add(package_root, arcname="package")
+
+            state_root = tmp / "home" / ".stronk-pi"
+            existing = state_root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package"
+            existing.mkdir(parents=True)
+            (existing / "old.txt").write_text("old\n", encoding="utf-8")
+            env = os.environ.copy()
+            env["HOME"] = str(tmp / "home")
+            old_home = os.environ.get("HOME")
+            try:
+                os.environ["HOME"] = env["HOME"]
+                guard.install_artifacts(
+                    [
+                        guard.ArtifactResult(
+                            name="stronk-pi-plugin",
+                            version="0.1.0",
+                            path=archive_path,
+                            sha256="test",
+                            byte_size=archive_path.stat().st_size,
+                        )
+                    ],
+                    dry_run=False,
+                )
+            finally:
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
+
+            installed = state_root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package"
+            self.assertTrue((installed / "new.txt").is_file())
+            self.assertFalse((installed / "old.txt").exists())
+
     def test_refresh_config_command_installs_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmp_name:
             tmp = Path(tmp_name)
@@ -373,7 +444,7 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["mode"], "refreshed")
             settings = json.loads((tmp / "home" / ".stronk-pi" / "agent" / "settings.json").read_text(encoding="utf-8"))
-            self.assertEqual(settings["defaultProvider"], "kimi-code")
+            self.assertEqual(settings["defaultProvider"], "kimi-coding")
             self.assertEqual(settings["defaultModel"], "kimi-for-coding")
 
 
