@@ -1,12 +1,12 @@
 {
-  "defaultProvider": "kimi-code",
+  "defaultProvider": "kimi-coding",
   "defaultModel": "kimi-for-coding",
   "enableSkillCommands": true,
   "enabledModels": [
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k2.6",
-    "kimi-code/kimi-for-coding",
+    "kimi-coding/kimi-for-coding",
     "alibaba-coding/qwen3-coder-plus",
     "alibaba-coding/qwen3-coder-next",
     "alibaba-coding/qwen3.6-plus"

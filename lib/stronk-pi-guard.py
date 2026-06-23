@@ -29,6 +29,7 @@ VERSION = "0.1.0"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
+LEGACY_MANAGED_MARKERS = ('managed_by = "stronk-pi-setup"',)
 DEFAULT_ROLE_MANIFEST_RELATIVE = Path("roles") / "stronk" / "roles.toml"
 ROLE_TEMPLATE_RELATIVE = Path("roles") / "stronk" / "templates"
 DEFAULTS_RELATIVE = Path("config") / "defaults.toml"
@@ -157,6 +158,7 @@ PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)
 ENV_NAMES = (
     "DEEPSEEK_API_KEY",
     "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
     "KIMI_CODE_API_KEY",
     "ALIBABA_CLOUD_CODING_PLAN_API_KEY",
 )
@@ -1021,7 +1023,7 @@ def write_managed_text(
     if path.exists():
         if path.is_symlink():
             raise StronkPiError(f"managed file must not be a symlink: {path}")
-        if require_marker and existing is not None and MANAGED_MARKER not in existing:
+        if require_marker and existing is not None and not is_managed_content(existing):
             raise StronkPiError(f"refusing to overwrite unmanaged file; use roles.local.toml for local overrides: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -1038,6 +1040,10 @@ def write_managed_text(
             pass
         raise
     return True
+
+
+def is_managed_content(content: str) -> bool:
+    return MANAGED_MARKER in content or any(marker in content for marker in LEGACY_MANAGED_MARKERS)
 
 
 def write_private_runtime_text(path: Path, content: str, *, dry_run: bool, mode: int = 0o600) -> bool:
@@ -1873,10 +1879,30 @@ def install_artifacts(results: list[ArtifactResult], dry_run: bool) -> None:
         try:
             with tarfile.open(result.path, "r:gz") as archive:
                 archive.extractall(tmp)
-            os.replace(tmp, dest)
+            replace_artifact_dir(tmp, dest)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
+
+
+def replace_artifact_dir(source: Path, dest: Path) -> None:
+    backup: Path | None = None
+    if dest.exists():
+        if dest.is_symlink() or not dest.is_dir():
+            raise StronkPiError(f"artifact install target must be a directory: {dest}")
+        backup = dest.with_name(f".{dest.name}.previous.{os.getpid()}")
+        shutil.rmtree(backup, ignore_errors=True)
+        os.replace(dest, backup)
+    try:
+        os.replace(source, dest)
+    except Exception:
+        if backup is not None and backup.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+            os.replace(backup, dest)
+        raise
+    else:
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
