@@ -1,26 +1,77 @@
 {
   "schemaVersion": 1,
   "compatibilityVersion": "stronkpi-setup-v1",
+  "bundle": {
+    "configSchemaVersion": 1,
+    "defaultConfigPath": "~/.stronk-pi/config/defaults.toml",
+    "defaultRoleManifestPath": "~/.stronk-pi/config/roles.toml",
+    "generatedAgentsPath": "~/.stronk-pi/agent/agents",
+    "harness": {
+      "command": "stronkpi",
+      "owner": "stronk-pi"
+    },
+    "localRoleManifestPath": "~/.stronk-pi/config/roles.local.toml",
+    "models": {
+      "default": "kimi-code/kimi-for-coding",
+      "vision": "kimi-code/kimi-for-coding"
+    },
+    "packagePins": {
+      "ask_user": {
+        "name": "pi-ask-user",
+        "version": "0.8.0"
+      },
+      "esbuild": {
+        "name": "esbuild",
+        "version": "0.28.0"
+      },
+      "intercom": {
+        "name": "pi-intercom",
+        "version": "0.6.0"
+      },
+      "jiti": {
+        "name": "jiti",
+        "version": "2.7.0"
+      },
+      "mcp_adapter": {
+        "name": "pi-mcp-adapter",
+        "version": "2.5.3"
+      },
+      "subagents": {
+        "name": "pi-subagents",
+        "version": "0.22.0"
+      },
+      "tsx": {
+        "name": "tsx",
+        "version": "4.22.4"
+      },
+      "typebox": {
+        "name": "typebox",
+        "version": "1.1.39"
+      }
+    },
+    "roleTemplatesPath": "~/.stronk-pi/config/role-templates",
+    "stateRoot": "~/.stronk-pi"
+  },
   "artifacts": [
     {
       "name": "stronk-pi-plugin",
       "version": "0.1.0",
-      "sourceRepo": "EYYCHEEV/stronk-pi",
-      "sourceCommit": "97ff30a50218e033e6a145e1d41ef7551b0563bd",
-      "immutableTag": "stronk-pi-v0.1.0",
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0",
-      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi/releases/download/stronk-pi-v0.1.0/stronk-pi-0.1.0.tgz",
-      "sha256": "aec8fcaa10eeba6f1b1db294181a1509ed009db105cff452caa104914b69ed25",
-      "byteSize": 18718,
-      "workflowRunId": "27628866602",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi/stronk-pi-0.1.0.tgz@sha256:aec8fcaa10eeba6f1b1db294181a1509ed009db105cff452caa104914b69ed25",
+      "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
+      "sourceCommit": "ec682a6077acff827622a4b3c240c3552837cdf3",
+      "immutableTag": "stronk-pi-plugin-v0.1.0",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.1.0",
+      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.1.0/stronk-pi-plugin-0.1.0.tgz",
+      "sha256": "9d202efa90fca8db7ff04741cd47e86af929a461b9e9fdd9a8956d3e3bc10932",
+      "byteSize": 61073,
+      "workflowRunId": "28003694080",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.1.0.tgz@sha256:9d202efa90fca8db7ff04741cd47e86af929a461b9e9fdd9a8956d3e3bc10932",
       "compatibilityVersion": "stronkpi-setup-v1",
-      "createdAt": "2026-06-16T15:30:45Z",
+      "createdAt": "2026-06-23T05:09:27.915Z",
       "provenance": {
-        "sourceRepo": "EYYCHEEV/stronk-pi",
-        "sourceCommit": "97ff30a50218e033e6a145e1d41ef7551b0563bd",
-        "immutableTag": "stronk-pi-v0.1.0",
-        "workflowRunId": "27628866602"
+        "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
+        "sourceCommit": "ec682a6077acff827622a4b3c240c3552837cdf3",
+        "immutableTag": "stronk-pi-plugin-v0.1.0",
+        "workflowRunId": "28003694080"
       }
     }
   ]

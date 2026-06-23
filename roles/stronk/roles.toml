@@ -1,26 +1,26 @@
 schema_version = 1
-source_of_truth = "public-setup-manifest"
+config_schema_version = 1
+source_of_truth = "stronk-pi-public-role-templates"
+managed_by = "stronk-pi"
 
 [paths]
-pi_agents_dir = "../../config/pi/agent/agents"
+codex_roles_dir = "~/.stronk-pi/config/role-templates"
+pi_agents_dir = "~/.stronk-pi/agent/agents"
 
 [pi]
-mode = "manifest-verified"
-enabled_roles = "generated-from-release-artifact"
+mode = "portable-runtime"
+enabled_roles = "all-public-stronk"
 read_tools = ["read", "grep", "find", "ls"]
 write_tools = ["read", "grep", "find", "ls", "bash", "write", "edit"]
-extensions = ["managed-artifact:stronk-pi-plugin"]
+extensions = ["~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs"]
 write_roles = [
-  "build-fixer",
-  "deep-executor",
   "executor",
-  "tdd-guide",
-  "technical-writer",
 ]
 system_prompt_mode = "replace"
 inherit_project_context = true
 inherit_skills = false
 default_context = "fresh"
+vision_model = "kimi-code/kimi-for-coding"
 
 [pi.policy]
 write_routing = "owned-task-only"
@@ -30,4 +30,3 @@ deny_overrides = true
 deny_background = true
 deny_worktree = true
 deny_chains = true
-

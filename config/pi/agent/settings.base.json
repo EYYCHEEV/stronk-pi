@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "deepseek",
-  "defaultModel": "deepseek-v4-pro",
+  "defaultProvider": "kimi-code",
+  "defaultModel": "kimi-for-coding",
   "enableSkillCommands": true,
   "enabledModels": [
     "deepseek/deepseek-v4-pro",

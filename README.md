@@ -1,24 +1,13 @@
-# Stronk Pi Setup
+# Stronk Pi
 
 `stronkpi-setup` is the setup and validation command for Stronk Pi.
-Stronk Pi is the guarded Pi Coding Agent distribution. `stronkpi` is reserved
-for the guarded Stronk Pi harness.
+Stronk Pi is the guarded Pi Coding Agent distribution.
+`stronkpi` is the portable guarded harness installed by this distribution repo.
 
-> Status: Public preview / not fully self-contained
->
-> `stronkpi-setup` currently validates manifests, artifacts, host safety, and
-> MCP configuration for Stronk Pi. The complete end-user `stronkpi` launch path
-> is still being separated from the private maintainer workstation
-> configuration.
->
-> Until that extraction is complete, this repo is useful for development,
-> validation, and artifact verification, but external users should not expect a
-> one-command standalone Stronk Pi install.
-
-This repository provides a preview installer, manifest verifier, guarded
-diagnostics, safe baseline configuration, and offline tests. Maintainers and
-early testers can use pinned release manifests and verified artifacts while the
-standalone public launch path is being extracted.
+This repository provides the public bundle contract: setup and doctor behavior,
+manifest verification, the portable harness, public-safe role templates,
+default role/config/model files, package pins, generated-agent output paths, and
+offline tests. Mutable runtime output is installed under `~/.stronk-pi/`.
 
 ## Name Map
 
@@ -27,8 +16,8 @@ standalone public launch path is being extracted.
 | Stronk Pi | Guarded Pi Coding Agent distribution. |
 | `stronkpi` | Guarded harness command that launches Pi with Stronk Pi controls. |
 | `stronkpi-setup` | Setup, validation, diagnostics, and artifact update command. |
-| `stronk-pi` | Plugin source repo and package namespace. |
-| `stronk-pi-plugin` | Verified plugin artifact consumed by setup manifests. |
+| `stronk-pi` | Public distribution repo and bundle contract. |
+| `stronk-pi-plugin` | Plugin source repo and verified artifact consumed by setup manifests. |
 | Stronk Pi Mono | Trusted Pi fork runtime lineage used by the guarded harness. |
 
 Guarded means Pi is launched with fail-closed controls for tool permissions,
@@ -49,8 +38,8 @@ Install the command into `~/.local/bin`:
 ./install.sh
 ```
 
-The installer creates `stronkpi-setup`. It does not create or wrap `stronkpi`,
-and it does not create short compatibility commands.
+The installer creates `stronkpi-setup` and `stronkpi`. It does not create short
+compatibility aliases.
 
 ## Validate
 
@@ -60,6 +49,8 @@ Run the offline setup checks:
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup validate
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --json --allow-missing-mcp
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --mcp-registry ~/.config/mcp/registry.toml
+STRONKPI_NO_NETWORK=1 bin/stronkpi-setup refresh-config --dry-run
+STRONKPI_NO_NETWORK=1 bin/stronkpi --validate-only
 ```
 
 Verify an offline fixture manifest:
@@ -68,11 +59,37 @@ Verify an offline fixture manifest:
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup update --dry-run --manifest tests/fixtures/manifests/good-local.json
 ```
 
-`doctor` validates the setup host and MCP registry. It checks Python
-availability, state-root safety, registry TOML shape, server commands,
-selected `.mcp-tools` names, selected server environment variables, unsafe MCP
-URLs, floating package refs, and accidental personal paths. Network checks are
-opt-in with `--check-network` and are skipped when `STRONKPI_NO_NETWORK=1`.
+`doctor` validates the distribution host, bundle contract, harness presence, role
+manifest status, optional `roles.local.toml` overlay status, plugin artifact
+status, trusted runtime status, and MCP registry. It checks Python availability,
+state-root safety, registry TOML shape, server commands, selected `.mcp-tools`
+names, selected server environment variables, unsafe MCP URLs, floating package
+refs, and accidental personal paths. Network checks are opt-in with
+`--check-network` and are skipped when `STRONKPI_NO_NETWORK=1`.
+
+## Runtime Config
+
+The canonical runtime state and config root is `~/.stronk-pi/`.
+
+`stronkpi-setup refresh-config` installs or refreshes:
+
+- `~/.stronk-pi/config/defaults.toml`
+- `~/.stronk-pi/config/roles.toml`
+- `~/.stronk-pi/config/role-templates/*.toml`
+- generated runtime role Markdown under `~/.stronk-pi/agent/agents/`
+
+It also refreshes setup-managed Pi runtime config under
+`~/.stronk-pi/agent/`, including `settings.json`, `models.json`, and
+`AGENTS.md`.
+Use `--dry-run` to preview changed paths and `--json` for automation.
+
+`stronkpi-setup update` verifies the release manifest, also refreshes the same
+managed runtime config, and installs or refreshes:
+
+- verified plugin artifacts under `~/.stronk-pi/artifacts/`
+
+Private local preferences belong in `~/.stronk-pi/config/roles.local.toml`.
+Generated role Markdown is runtime output, not tracked source.
 
 ## State And Credentials
 

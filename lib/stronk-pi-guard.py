@@ -12,6 +12,7 @@ import re
 import shutil
 import socket
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -25,6 +26,84 @@ from urllib.parse import urlparse
 
 
 VERSION = "0.1.0"
+CONFIG_SCHEMA_VERSION = 1
+BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
+MANAGED_MARKER = 'managed_by = "stronk-pi"'
+DEFAULT_ROLE_MANIFEST_RELATIVE = Path("roles") / "stronk" / "roles.toml"
+ROLE_TEMPLATE_RELATIVE = Path("roles") / "stronk" / "templates"
+DEFAULTS_RELATIVE = Path("config") / "defaults.toml"
+DEFAULT_PLUGIN_VERSION = "0.1.0"
+DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
+SHARED_HOOK_TIMEOUT_SEC = 5.0
+LEGACY_MANAGED_RUNTIME_PATHS = (
+    Path("agent") / "agents",
+    Path("agent") / "AGENTS.md",
+    Path("agent") / "models.json",
+    Path("agent") / "settings.json",
+    Path("config") / "web-search.json",
+    Path("home") / ".pi" / "web-search.json",
+)
+CONTROL_PLANE_ENV_NAMES = (
+    "STRONKPI_SETUP_ROOT",
+    "STRONKPI_STATE_ROOT",
+    "STRONK_PI_STATE_ROOT",
+    "STRONK_PI_GUARD",
+    "STRONK_PI_HOOK_COMMAND_JSON",
+    "STRONK_PI_CODEX_HOOK_COMMAND_JSON",
+    "STRONK_PI_URL_CHECK_COMMAND_JSON",
+    "STRONK_PI_TELEGRAM_COMMAND_JSON",
+    "STRONK_PI_EXTENSION",
+    "STRONK_PI_AGENT_DIR",
+    "STRONK_PI_CODEX_AGENTS",
+    "STRONK_PI_SESSION_BASE",
+    "STRONK_PI_PRIVATE_HOME",
+    "STRONK_PI_MCP_REGISTRY",
+    "STRONK_PI_ROLE_MANIFEST",
+    "STRONK_PI_ROLE_MANIFEST_LOCAL",
+    "STRONK_PI_DANGEROUS_COMMAND_HOOK",
+    "STRONK_PI_SUBAGENT_FACADE",
+    "STRONK_PI_SUBAGENT_ADAPTER",
+    "STRONK_PI_SKILL_ROOTS",
+)
+CONTROLLED_PI_FLAGS = {
+    "--extension",
+    "-e",
+    "--no-extensions",
+    "-ne",
+    "--skill",
+    "--no-skills",
+    "-ns",
+    "--tools",
+    "-t",
+    "--no-tools",
+    "-nt",
+    "--no-builtin-tools",
+    "-nbt",
+    "--session-dir",
+    "--provider",
+    "--api-key",
+    "--offline",
+    "--no-context-files",
+    "-nc",
+    "--system-prompt",
+    "--append-system-prompt",
+    "--prompt-template",
+    "--no-prompt-templates",
+    "-np",
+    "--theme",
+    "--no-themes",
+    "--mcp-config",
+}
+PACKAGE_PIN_KEYS = (
+    "mcp_adapter",
+    "subagents",
+    "intercom",
+    "jiti",
+    "ask_user",
+    "tsx",
+    "typebox",
+    "esbuild",
+)
 BLOCKED_WEB_HOSTS = {
     "localhost",
     "ip6-localhost",
@@ -66,7 +145,14 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[/\\]")
 MCP_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi-setup"
+DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi"
+EXPECTED_ARTIFACT_IDENTITIES = {
+    "stronk-pi-plugin": {
+        "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
+        "tagPrefix": "stronk-pi-plugin-v",
+        "assetPrefix": "stronk-pi-plugin-",
+    },
+}
 PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
 ENV_NAMES = (
     "DEEPSEEK_API_KEY",
@@ -74,6 +160,95 @@ ENV_NAMES = (
     "KIMI_CODE_API_KEY",
     "ALIBABA_CLOUD_CODING_PLAN_API_KEY",
 )
+READ_ONLY_TOOLS = {"read", "grep", "find", "ls", "glob", "todoread"}
+WEB_TOOLS = {"web_search", "code_search", "fetch_content", "stronk_fetch_content", "get_search_content"}
+SESSION_TOOLS = {"todowrite", "todoread", "question", "ask_user"}
+MUTATING_TOOLS = {"bash", "write", "edit", "patch", "apply_patch", "multi_edit", "user_bash"}
+CODEX_HOOK_EVENTS = {
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "Stop",
+}
+CODEX_HOOK_REQUIRED_FIELDS = {
+    "SessionStart": {
+        "session_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "source",
+    },
+    "UserPromptSubmit": {
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "prompt",
+    },
+    "PreToolUse": {
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "tool_name",
+        "tool_input",
+        "tool_use_id",
+    },
+    "PermissionRequest": {
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "tool_name",
+        "tool_input",
+    },
+    "PostToolUse": {
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "tool_name",
+        "tool_input",
+        "tool_response",
+        "tool_use_id",
+    },
+    "Stop": {
+        "session_id",
+        "turn_id",
+        "transcript_path",
+        "cwd",
+        "hook_event_name",
+        "model",
+        "permission_mode",
+        "stop_hook_active",
+        "last_assistant_message",
+    },
+}
+DENY_BASH_PATTERNS = (
+    re.compile(r"(^|[;&|]\s*)sudo(\s|$)"),
+    re.compile(r"rm\s+-[^\n;|&]*[rf][^\n;|&]*\s+/(?:\s|$)"),
+    re.compile(r"curl\b[^\n|;]*\|\s*(?:sh|bash|zsh)\b"),
+    re.compile(r"wget\b[^\n|;]*\|\s*(?:sh|bash|zsh)\b"),
+    re.compile(r"\bgit\s+reset\s+--hard\b"),
+    re.compile(r"\bgit\s+clean\s+-[^\n;|&]*[df][^\n;|&]*\b"),
+)
+SENSITIVE_PATH_PARTS = {".env", ".ssh", ".gnupg", ".aws", ".config/mcp", ".codex", ".claude"}
 
 
 class StronkPiError(RuntimeError):
@@ -92,6 +267,8 @@ class ArtifactResult:
 def setup_root() -> Path:
     raw = os.environ.get("STRONKPI_SETUP_ROOT")
     if raw:
+        if not dev_overrides_enabled():
+            raise StronkPiError("STRONKPI_SETUP_ROOT requires STRONK_PI_DEV_OVERRIDES=1")
         return Path(raw).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
 
@@ -117,6 +294,16 @@ def redact(value: Any) -> Any:
 
 def json_out(payload: dict[str, Any]) -> None:
     print(json.dumps(redact(payload), indent=2, sort_keys=True))
+
+
+def is_plain_object(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def nonempty(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def sha256_file(path: Path) -> str:
@@ -203,14 +390,340 @@ def check_public_http_url(value: str, label: str) -> dict[str, Any]:
     return {"url": stripped, "hostname": host, "addresses": addresses}
 
 
+def default_dangerous_command_hook_path() -> Path:
+    return Path.home() / ".agents" / "hooks" / "block-dangerous-commands.py"
+
+
+def hook_context(event: dict[str, Any]) -> dict[str, Any]:
+    raw = event.get("hookContext") or event.get("hook_context") or {}
+    return raw if is_plain_object(raw) else {}
+
+
+def context_string(context: dict[str, Any], key: str, *env_names: str, default: str | None = None) -> str | None:
+    value = context.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    for env_name in env_names:
+        env_value = os.environ.get(env_name)
+        if env_value and env_value.strip():
+            return env_value.strip()
+    return default
+
+
+def codex_transcript_path(context: dict[str, Any]) -> str | None:
+    value = context_string(context, "transcript_path", "PI_TRANSCRIPT_PATH", "STRONK_PI_TRANSCRIPT_PATH")
+    return value if value else None
+
+
+def shared_hook_pre_tool_use_input(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    cwd: Path,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    context = context or {}
+    return {
+        "session_id": context_string(context, "session_id", "PI_SESSION_ID", default="stronk-pi"),
+        "turn_id": context_string(context, "turn_id", "PI_TURN_ID", default=f"stronk-pi-{os.getpid()}"),
+        "transcript_path": codex_transcript_path(context),
+        "cwd": str(cwd.resolve()),
+        "hook_event_name": "PreToolUse",
+        "model": context_string(context, "model", "PI_MODEL", default="stronk-pi"),
+        "permission_mode": context_string(context, "permission_mode", "PI_PERMISSION_MODE", default="default"),
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "tool_use_id": context_string(context, "tool_use_id", "PI_TOOL_USE_ID", default=f"stronk-pi-{os.getpid()}"),
+    }
+
+
+def shared_hook_reason(payload: dict[str, Any], fallback: str) -> str:
+    hook_specific = payload.get("hookSpecificOutput")
+    if is_plain_object(hook_specific):
+        for key in ("permissionDecisionReason", "reason", "message", "additionalContext"):
+            reason = nonempty(hook_specific.get(key))
+            if reason:
+                return reason
+    for key in ("reason", "message", "stopReason", "systemMessage"):
+        reason = nonempty(payload.get(key))
+        if reason:
+            return reason
+    return fallback
+
+
+def interpret_shared_hook_payload(payload: dict[str, Any] | None) -> tuple[bool, str]:
+    if payload is None:
+        return True, "allowed by shared dangerous-command hook"
+    if payload.get("continue") is False:
+        return False, shared_hook_reason(payload, "shared dangerous-command hook stopped processing")
+    hook_specific = payload.get("hookSpecificOutput")
+    if is_plain_object(hook_specific):
+        if hook_specific.get("updatedInput") is not None:
+            return False, "shared dangerous-command hook attempted to mutate tool input"
+        decision = str(hook_specific.get("permissionDecision") or "").strip().lower()
+        if decision in {"deny", "block", "ask"}:
+            return False, shared_hook_reason(payload, "blocked by shared dangerous-command hook")
+        if decision == "allow":
+            return True, "allowed by shared dangerous-command hook"
+    decision = str(payload.get("decision") or "").strip().lower()
+    if decision in {"block", "deny", "ask"}:
+        return False, shared_hook_reason(payload, "blocked by shared dangerous-command hook")
+    if decision in {"approve", "allow"}:
+        return True, "allowed by shared dangerous-command hook"
+    return True, "allowed by shared dangerous-command hook"
+
+
+def run_shared_pre_tool_use_hook(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    cwd: Path,
+    context: dict[str, Any] | None = None,
+) -> tuple[bool, str] | None:
+    raw = os.environ.get("STRONK_PI_DANGEROUS_COMMAND_HOOK")
+    if not raw:
+        return None
+    hook_path = Path(raw).expanduser()
+    if not hook_path.is_file():
+        raise StronkPiError(f"shared dangerous-command hook missing: {hook_path}")
+    event = shared_hook_pre_tool_use_input(tool_name, tool_input, cwd, context)
+    try:
+        proc = subprocess.run(
+            [sys.executable or "python3", str(hook_path)],
+            input=json.dumps(event, separators=(",", ":")),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=SHARED_HOOK_TIMEOUT_SEC,
+            check=False,
+            text=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise StronkPiError("shared dangerous-command hook timed out") from exc
+    except Exception as exc:
+        raise StronkPiError(f"shared dangerous-command hook failed to run: {exc}") from exc
+    if proc.returncode == 2:
+        reason = nonempty(proc.stderr) or nonempty(proc.stdout) or "blocked by shared dangerous-command hook"
+        return False, reason
+    if proc.returncode != 0:
+        detail = nonempty(proc.stderr) or nonempty(proc.stdout) or "no output"
+        raise StronkPiError(f"shared dangerous-command hook failed closed with exit {proc.returncode}: {detail}")
+    stdout = proc.stdout.strip()
+    if not stdout:
+        return True, "allowed by shared dangerous-command hook"
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        raise StronkPiError(f"shared dangerous-command hook returned malformed stdout: {exc}") from exc
+    if not is_plain_object(parsed):
+        raise StronkPiError("shared dangerous-command hook returned non-object JSON")
+    return interpret_shared_hook_payload(parsed)
+
+
+def internally_screen_bash(command: str) -> tuple[bool, str]:
+    for pattern in DENY_BASH_PATTERNS:
+        if pattern.search(command):
+            return False, "blocked by distribution-owned shell safety screen"
+    if string_has_secret(command):
+        return False, "shell command contains a secret-like value"
+    return True, "allowed by distribution-owned shell safety screen"
+
+
+def target_path_from_payload(tool: str, payload: dict[str, Any], cwd: Path) -> Path:
+    for key in ("path", "file_path", "filepath", "target", "filename"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            raw = Path(value).expanduser()
+            return raw if raw.is_absolute() else cwd / raw
+    raise StronkPiError(f"{tool} payload missing target path")
+
+
+def validate_mutation_target(tool: str, payload: dict[str, Any], cwd: Path) -> tuple[Path, str]:
+    target = target_path_from_payload(tool, payload, cwd).resolve(strict=False)
+    cwd_resolved = cwd.resolve(strict=False)
+    if not is_relative_to(target, cwd_resolved):
+        raise StronkPiError(f"{tool} target escapes cwd: {target}")
+    text = str(target)
+    if any(part in text for part in SENSITIVE_PATH_PARTS):
+        raise StronkPiError(f"{tool} target touches sensitive path: {target}")
+    return target, f"{tool} target stays under cwd"
+
+
+def guarded_tool_decision(tool: str, payload: dict[str, Any], cwd: Path, context: dict[str, Any]) -> dict[str, Any]:
+    if tool in {"mcp", "stronk_subagent"} | WEB_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
+        return {"allow": True, "reason": "distribution-owned safe tool class", "input": payload}
+    if tool == "subagent":
+        return {"allow": False, "reason": "raw subagent tool denied; use stronk_subagent", "input": payload}
+    if tool == "bash":
+        command = payload.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise StronkPiError("bash payload missing command")
+        shared = run_shared_pre_tool_use_hook("shell_command", {"command": command}, cwd, context)
+        if shared is not None:
+            allowed, reason = shared
+        else:
+            allowed, reason = internally_screen_bash(command)
+        return {"allow": allowed, "reason": reason, "input": payload}
+    if tool in {"write", "edit"}:
+        _target, reason = validate_mutation_target(tool, payload, cwd)
+        shared = run_shared_pre_tool_use_hook(tool, payload, cwd, context)
+        if shared is not None:
+            allowed, shared_reason = shared
+            reason = f"{reason}; {shared_reason}"
+        else:
+            allowed = True
+        return {"allow": allowed, "reason": reason, "input": payload}
+    if tool in MUTATING_TOOLS:
+        return {"allow": False, "reason": f"unsupported mutating tool denied: {tool}", "input": payload}
+    return {"allow": False, "reason": f"unknown tool denied by default: {tool}", "input": payload}
+
+
+def hook_decision(event: dict[str, Any]) -> dict[str, Any]:
+    event_type = event.get("event") or event.get("type")
+    cwd = Path(str(event.get("cwd") or os.getcwd())).expanduser()
+    context = hook_context(event)
+    if event_type == "tool_call":
+        tool = str(event.get("toolName") or event.get("tool_name") or "")
+        payload = event.get("input")
+        if not tool or not is_plain_object(payload):
+            raise StronkPiError("tool_call payload requires toolName and object input")
+        return guarded_tool_decision(tool, payload, cwd, context)
+    if event_type == "user_bash":
+        command = event.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise StronkPiError("user_bash payload missing command")
+        shared = run_shared_pre_tool_use_hook("shell_command", {"command": command}, cwd, context)
+        allowed, reason = shared if shared is not None else internally_screen_bash(command)
+        return {
+            "allow": allowed,
+            "reason": reason,
+            "command": command,
+            "excludeFromContext": bool(event.get("excludeFromContext")),
+        }
+    raise StronkPiError(f"unsupported Pi hook event: {event_type!r}")
+
+
+def cmd_hook(_args: argparse.Namespace) -> int:
+    try:
+        raw = sys.stdin.read()
+        event = json.loads(raw)
+        if not is_plain_object(event):
+            raise StronkPiError("hook input must be a JSON object")
+        json_out(hook_decision(event))
+        return 0
+    except StronkPiError as exc:
+        json_out({"allow": False, "reason": str(redact(str(exc)))})
+        return 1
+    except Exception as exc:
+        json_out({"allow": False, "reason": f"unexpected hook failure: {redact(str(exc))}"})
+        return 2
+
+
+def validate_codex_hook_payload(payload: dict[str, Any]) -> str:
+    event_name = payload.get("hook_event_name") or payload.get("hookEventName")
+    if not isinstance(event_name, str) or event_name not in CODEX_HOOK_EVENTS:
+        raise StronkPiError(f"unsupported Codex hook event: {event_name!r}")
+    if payload.get("hook_event_name") != event_name:
+        raise StronkPiError("Codex hook payload must use hook_event_name")
+    missing = sorted(key for key in CODEX_HOOK_REQUIRED_FIELDS[event_name] if key not in payload)
+    if missing:
+        raise StronkPiError(f"Codex {event_name} payload missing field(s): {', '.join(missing)}")
+    if not isinstance(payload.get("session_id"), str) or not payload["session_id"].strip():
+        raise StronkPiError(f"Codex {event_name} payload requires session_id")
+    if event_name != "SessionStart" and (not isinstance(payload.get("turn_id"), str) or not payload["turn_id"].strip()):
+        raise StronkPiError(f"Codex {event_name} payload requires turn_id")
+    if not isinstance(payload.get("cwd"), str) or not payload["cwd"].strip():
+        raise StronkPiError(f"Codex {event_name} payload requires cwd")
+    if not isinstance(payload.get("model"), str) or not payload["model"].strip():
+        raise StronkPiError(f"Codex {event_name} payload requires model")
+    if not isinstance(payload.get("permission_mode"), str) or not payload["permission_mode"].strip():
+        raise StronkPiError(f"Codex {event_name} payload requires permission_mode")
+    transcript = payload.get("transcript_path")
+    if transcript is not None and not isinstance(transcript, str):
+        raise StronkPiError(f"Codex {event_name} transcript_path must be string or null")
+    if event_name == "SessionStart":
+        if payload.get("source") not in {"startup", "resume", "clear"}:
+            raise StronkPiError("Codex SessionStart source must be startup, resume, or clear")
+    elif event_name == "UserPromptSubmit":
+        if not isinstance(payload.get("prompt"), str):
+            raise StronkPiError("Codex UserPromptSubmit prompt must be a string")
+    elif event_name in {"PreToolUse", "PermissionRequest", "PostToolUse"}:
+        if not isinstance(payload.get("tool_name"), str) or not payload["tool_name"].strip():
+            raise StronkPiError(f"Codex {event_name} requires tool_name")
+        if not is_plain_object(payload.get("tool_input")):
+            raise StronkPiError(f"Codex {event_name} tool_input must be a JSON object")
+        if event_name in {"PreToolUse", "PostToolUse"}:
+            if not isinstance(payload.get("tool_use_id"), str) or not payload["tool_use_id"].strip():
+                raise StronkPiError(f"Codex {event_name} requires tool_use_id")
+        if event_name == "PostToolUse" and not is_plain_object(payload.get("tool_response")):
+            raise StronkPiError("Codex PostToolUse tool_response must be a JSON object")
+    elif event_name == "Stop":
+        if not isinstance(payload.get("stop_hook_active"), bool):
+            raise StronkPiError("Codex Stop stop_hook_active must be boolean")
+        if payload.get("last_assistant_message") is not None and not isinstance(payload["last_assistant_message"], str):
+            raise StronkPiError("Codex Stop last_assistant_message must be string or null")
+    return event_name
+
+
+def cmd_codex_hook(_args: argparse.Namespace) -> int:
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw)
+        if not is_plain_object(payload):
+            raise StronkPiError("codex-hook input must be a JSON object")
+        event_name = validate_codex_hook_payload(payload)
+        json_out({"continue": True, "hookSpecificOutput": {"hookEventName": event_name}})
+        return 0
+    except StronkPiError as exc:
+        json_out({"continue": True, "warning": str(redact(str(exc)))})
+        return 0
+    except Exception as exc:
+        json_out({"continue": True, "warning": f"unexpected codex-hook failure: {redact(str(exc))}"})
+        return 0
+
+
+def cmd_url_check(_args: argparse.Namespace) -> int:
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw)
+        if not is_plain_object(payload):
+            raise StronkPiError("url-check input must be a JSON object")
+        url = payload.get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise StronkPiError("url-check requires url")
+        json_out({"allow": True, **check_public_http_url(url, "url-check URL")})
+        return 0
+    except StronkPiError as exc:
+        json_out({"allow": False, "reason": str(redact(str(exc)))})
+        return 0
+    except Exception as exc:
+        json_out({"allow": False, "reason": f"unexpected url-check failure: {redact(str(exc))}"})
+        return 0
+
+
+def cmd_telegram(_args: argparse.Namespace) -> int:
+    try:
+        raw = sys.stdin.read() or "{}"
+        payload = redact(json.loads(raw))
+    except Exception:
+        payload = {"type": "unparseable", "payload": "<redacted>"}
+    transport = os.environ.get("STRONK_PI_TELEGRAM_TRANSPORT")
+    if not transport:
+        return 0
+    try:
+        subprocess.run(
+            [transport],
+            input=json.dumps(payload, sort_keys=True),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+            text=True,
+        )
+    except Exception:
+        return 0
+    return 0
+
+
 def state_root() -> Path:
-    raw = os.environ.get("STRONKPI_STATE_ROOT")
-    root = Path(raw).expanduser() if raw else Path.home() / ".stronk-pi"
-    if not root.is_absolute():
-        raise StronkPiError(f"state root must be absolute: {root}")
-    if root.exists() and root.is_symlink():
-        raise StronkPiError(f"state root must not be a symlink: {root}")
-    return root
+    return resolve_state_root()
 
 
 def xdg_config_home() -> Path:
@@ -238,6 +751,46 @@ def ensure_private_dir(path: Path) -> Path:
         raise StronkPiError(f"directory is not owned by current user: {path}")
     os.chmod(path, 0o700)
     return path.resolve()
+
+
+def runtime_backup_root(root: Path) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return root / "runtime-backups" / stamp
+
+
+def migrate_legacy_managed_symlinks(root: Path, *, dry_run: bool) -> list[Path]:
+    backups: list[Path] = []
+    backup_root = runtime_backup_root(root)
+    for relative_path in LEGACY_MANAGED_RUNTIME_PATHS:
+        path = root / relative_path
+        if not path.is_symlink():
+            continue
+        backup_path = backup_root / (relative_path.as_posix().replace("/", "-") + ".symlink-target.txt")
+        if dry_run:
+            backups.append(backup_path)
+            continue
+        try:
+            target = os.readlink(path)
+        except FileNotFoundError:
+            continue
+        ensure_private_dir(root / "runtime-backups")
+        ensure_private_dir(backup_path.parent)
+        backup_path.write_text(target + "\n", encoding="utf-8")
+        os.chmod(backup_path, 0o600)
+        backups.append(backup_path)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    return backups
+
+
+def migrate_legacy_generated_agents_symlink(root: Path, *, dry_run: bool) -> Path | None:
+    backups = migrate_legacy_managed_symlinks(root, dry_run=dry_run)
+    for backup in backups:
+        if backup.name == "agent-agents.symlink-target.txt":
+            return backup
+    return None
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -382,6 +935,436 @@ def load_mcp_registry_toml(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise StronkPiError("MCP registry TOML must contain a table")
     return data
+
+
+def load_toml_document(path: Path) -> dict[str, Any]:
+    try:
+        import tomllib  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        return load_simple_toml(path)
+    try:
+        with path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except FileNotFoundError as exc:
+        raise StronkPiError(f"missing TOML file: {path}") from exc
+    except tomllib.TOMLDecodeError as exc:  # type: ignore[name-defined]
+        raise StronkPiError(f"invalid TOML file {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise StronkPiError(f"TOML file must contain a table: {path}")
+    return data
+
+
+def toml_quote(value: str) -> str:
+    return json.dumps(value)
+
+
+def dev_overrides_enabled() -> bool:
+    return os.environ.get("STRONK_PI_DEV_OVERRIDES") == "1" or os.environ.get("STRONKPI_DEV_OVERRIDES") == "1"
+
+
+def state_root_env_value() -> str | None:
+    raw_setup = os.environ.get("STRONKPI_STATE_ROOT")
+    raw_runtime = os.environ.get("STRONK_PI_STATE_ROOT")
+    if raw_setup and raw_runtime and raw_setup != raw_runtime:
+        raise StronkPiError("STRONKPI_STATE_ROOT and STRONK_PI_STATE_ROOT disagree")
+    return raw_setup or raw_runtime
+
+
+def resolve_state_root() -> Path:
+    raw = state_root_env_value()
+    if raw and not dev_overrides_enabled():
+        raise StronkPiError("STRONKPI_STATE_ROOT/STRONK_PI_STATE_ROOT requires STRONK_PI_DEV_OVERRIDES=1")
+    root = Path(raw).expanduser() if raw else Path.home() / ".stronk-pi"
+    if not root.is_absolute():
+        raise StronkPiError(f"state root must be absolute: {root}")
+    if root.exists() and root.is_symlink():
+        raise StronkPiError(f"state root must not be a symlink: {root}")
+    return root
+
+
+def harness_state_root() -> Path:
+    return resolve_state_root()
+
+
+def expand_runtime_path(raw: str, root: Path | None = None) -> Path:
+    if raw == "~/.stronk-pi" or raw.startswith("~/.stronk-pi/"):
+        base = root if root is not None else Path.home() / ".stronk-pi"
+        suffix = raw.removeprefix("~/.stronk-pi").lstrip("/")
+        return (base / suffix).resolve(strict=False)
+    return Path(raw).expanduser().resolve(strict=False)
+
+
+def resolve_manifest_relative(manifest_path: Path, raw: str, root: Path) -> Path:
+    if raw.startswith("~"):
+        return expand_runtime_path(raw, root)
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = manifest_path.parent / candidate
+    return candidate.resolve(strict=False)
+
+
+def write_managed_text(
+    path: Path,
+    content: str,
+    *,
+    dry_run: bool,
+    mode: int = 0o600,
+    require_marker: bool = True,
+) -> bool:
+    existing = path.read_text(encoding="utf-8") if path.exists() and path.is_file() else None
+    if existing == content:
+        if not dry_run:
+            os.chmod(path, mode)
+        return False
+    if dry_run:
+        return True
+    if path.exists():
+        if path.is_symlink():
+            raise StronkPiError(f"managed file must not be a symlink: {path}")
+        if require_marker and existing is not None and MANAGED_MARKER not in existing:
+            raise StronkPiError(f"refusing to overwrite unmanaged file; use roles.local.toml for local overrides: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.chmod(tmp, mode)
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return True
+
+
+def write_private_runtime_text(path: Path, content: str, *, dry_run: bool, mode: int = 0o600) -> bool:
+    existing = path.read_text(encoding="utf-8") if path.exists() and path.is_file() else None
+    if existing == content:
+        if not dry_run:
+            os.chmod(path, mode)
+        return False
+    if dry_run:
+        return True
+    if path.exists() and not path.is_file():
+        raise StronkPiError(f"managed runtime file path is not a regular file: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.chmod(tmp, mode)
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return True
+
+
+def write_executable_script(path: Path, content: str) -> None:
+    if path.exists() and path.is_dir():
+        raise StronkPiError(f"install target is a directory: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        path.unlink()
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.chmod(tmp, 0o755)
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def public_role_templates() -> list[Path]:
+    template_dir = setup_root() / ROLE_TEMPLATE_RELATIVE
+    return sorted(template_dir.glob("*.toml"))
+
+
+def role_template_name(path: Path) -> str:
+    data = load_toml_document(path)
+    name = data.get("name") or path.stem
+    if not isinstance(name, str) or not ROLE_NAME_RE.fullmatch(name):
+        raise StronkPiError(f"invalid role template name in {path}")
+    return name
+
+
+ROLE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def validate_public_role_templates() -> list[str]:
+    templates = public_role_templates()
+    if not templates:
+        raise StronkPiError("no public role templates found")
+    names = [role_template_name(path) for path in templates]
+    if len(set(names)) != len(names):
+        raise StronkPiError("duplicate public role template names")
+    for path in templates:
+        data = load_toml_document(path)
+        instructions = data.get("developer_instructions")
+        if not isinstance(instructions, str) or not instructions.strip():
+            raise StronkPiError(f"role template missing developer_instructions: {path.name}")
+    return sorted(names)
+
+
+def role_manifest_template(root: Path) -> str:
+    source = (setup_root() / DEFAULT_ROLE_MANIFEST_RELATIVE).read_text(encoding="utf-8")
+    return source.replace("~/.stronk-pi/config/role-templates", str(root / "config" / "role-templates")).replace(
+        "~/.stronk-pi/agent/agents",
+        str(root / "agent" / "agents"),
+    )
+
+
+def defaults_template(root: Path) -> str:
+    source = (setup_root() / DEFAULTS_RELATIVE).read_text(encoding="utf-8")
+    return source.replace("~/.stronk-pi", str(root))
+
+
+def install_role_templates(root: Path, *, dry_run: bool) -> list[Path]:
+    changed: list[Path] = []
+    target_dir = root / "config" / "role-templates"
+    for source in public_role_templates():
+        target = target_dir / source.name
+        if write_managed_text(target, source.read_text(encoding="utf-8"), dry_run=dry_run):
+            changed.append(target)
+    return changed
+
+
+def load_runtime_role_config(root: Path) -> tuple[Path, Path | None, dict[str, Any], list[Path], Path]:
+    manifest_path = root / "config" / "roles.toml"
+    local_manifest_path = root / "config" / "roles.local.toml"
+    manifest = load_toml_document(manifest_path)
+    local_manifest = load_toml_document(local_manifest_path) if local_manifest_path.exists() else {}
+
+    paths = manifest.get("paths")
+    pi_cfg = manifest.get("pi")
+    if not isinstance(paths, dict) or not isinstance(pi_cfg, dict):
+        raise StronkPiError("role manifest requires [paths] and [pi] tables")
+
+    merged_pi = dict(pi_cfg)
+    if local_manifest:
+        local_pi = local_manifest.get("pi")
+        if local_pi is not None:
+            if not isinstance(local_pi, dict):
+                raise StronkPiError("local role overlay [pi] must be a table")
+            merged_pi.update(local_pi)
+
+    role_dirs = [resolve_manifest_relative(manifest_path, str(paths.get("codex_roles_dir") or ""), root)]
+    local_paths = local_manifest.get("paths") if local_manifest else None
+    if local_paths is not None:
+        if not isinstance(local_paths, dict):
+            raise StronkPiError("local role overlay [paths] must be a table")
+        local_dir = local_paths.get("codex_roles_dir")
+        if isinstance(local_dir, str) and local_dir.strip():
+            role_dirs.append(resolve_manifest_relative(local_manifest_path, local_dir, root))
+        extra_dirs = local_paths.get("extra_codex_roles_dirs")
+        if extra_dirs is not None:
+            if not isinstance(extra_dirs, list) or not all(isinstance(item, str) for item in extra_dirs):
+                raise StronkPiError("local role overlay paths.extra_codex_roles_dirs must be a string list")
+            role_dirs.extend(resolve_manifest_relative(local_manifest_path, item, root) for item in extra_dirs)
+
+    generated_raw = str(paths.get("pi_agents_dir") or root / "agent" / "agents")
+    generated_dir = resolve_manifest_relative(manifest_path, generated_raw, root)
+    return manifest_path, local_manifest_path if local_manifest else None, merged_pi, role_dirs, generated_dir
+
+
+def string_list_config(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise StronkPiError(f"{label} must be a string list")
+    return list(value)
+
+
+def tools_for_role(role_name: str, pi_cfg: dict[str, Any]) -> list[str]:
+    read_tools = string_list_config(pi_cfg.get("read_tools") or ["read", "grep", "find", "ls"], "pi.read_tools")
+    write_tools = string_list_config(pi_cfg.get("write_tools") or read_tools, "pi.write_tools")
+    write_roles = set(string_list_config(pi_cfg.get("write_roles") or [], "pi.write_roles"))
+    return write_tools if role_name in write_roles else read_tools
+
+
+def render_pi_role(role_path: Path, role: dict[str, Any], pi_cfg: dict[str, Any]) -> str:
+    name = role_template_name(role_path)
+    description = str(role.get("description") or name.replace("-", " ")).strip()
+    instructions = str(role.get("developer_instructions") or "").strip()
+    if not instructions:
+        raise StronkPiError(f"role template missing developer_instructions: {role_path}")
+    tools = ", ".join(tools_for_role(name, pi_cfg))
+    extensions = string_list_config(pi_cfg.get("extensions") or [], "pi.extensions")
+    lines = [
+        "---",
+        f"name: {name}",
+        f"description: {description}",
+        f"tools: {tools}",
+        f"systemPromptMode: {pi_cfg.get('system_prompt_mode', 'replace')}",
+        f"inheritProjectContext: {str(bool(pi_cfg.get('inherit_project_context', True))).lower()}",
+        f"inheritSkills: {str(bool(pi_cfg.get('inherit_skills', False))).lower()}",
+        f"defaultContext: {pi_cfg.get('default_context', 'fresh')}",
+    ]
+    if extensions:
+        lines.append("extensions: " + ", ".join(extensions))
+    model = role.get("model")
+    if name == "vision":
+        model = pi_cfg.get("vision_model") or model
+    if isinstance(model, str) and model:
+        lines.append(f"model: {model}")
+    lines.append("---")
+    source_hash = sha256_file(role_path)
+    return (
+        "\n".join(lines)
+        + "\n\n"
+        + f"<!-- Generated at runtime by stronkpi-setup from public role template {role_path.name}; source-sha256={source_hash}. -->\n\n"
+        + f"<!-- {MANAGED_MARKER} -->\n\n"
+        + f"You are the Pi adapter for the Stronk role `{name}`.\n\n"
+        + "Runtime policy:\n"
+        + "- This file is generated runtime output under the Stronk Pi state root; do not track it as source.\n"
+        + "- Follow the active Stronk Pi role manifest and local overlay supplied by the harness.\n"
+        + "- Read-only roles must not edit files or run mutating commands.\n"
+        + "- Write-capable roles may mutate only when the operator task and guard policy explicitly allow it.\n\n"
+        + "Role instructions:\n\n"
+        + instructions
+        + "\n"
+    )
+
+
+def role_files_from_dirs(role_dirs: list[Path]) -> dict[str, Path]:
+    files: dict[str, Path] = {}
+    for directory in role_dirs:
+        if not directory.is_dir():
+            raise StronkPiError(f"role template directory missing: {directory}")
+        for path in sorted(directory.glob("*.toml")):
+            name = role_template_name(path)
+            files[name] = path
+    if not files:
+        raise StronkPiError("no runtime role templates found")
+    return files
+
+
+def generate_pi_agents(root: Path, *, dry_run: bool) -> list[Path]:
+    _manifest, _local, pi_cfg, role_dirs, generated_dir = load_runtime_role_config(root)
+    outputs: dict[Path, str] = {}
+    for name, role_path in role_files_from_dirs(role_dirs).items():
+        outputs[generated_dir / f"{name}.md"] = render_pi_role(role_path, load_toml_document(role_path), pi_cfg)
+    changed: list[Path] = []
+    for path, content in sorted(outputs.items()):
+        if write_managed_text(path, content, dry_run=dry_run):
+            changed.append(path)
+    return changed
+
+
+def ensure_private_pi_home_config(root: Path, *, web_search_content: str, dry_run: bool) -> list[Path]:
+    private_pi = root / "home" / ".pi"
+    target = private_pi / "web-search.json"
+    if not dry_run:
+        ensure_private_dir(root / "home")
+        ensure_private_dir(private_pi)
+    changed: list[Path] = []
+    if write_private_runtime_text(target, web_search_content, dry_run=dry_run):
+        changed.append(target)
+    return changed
+
+
+def install_bundle_defaults(*, root: Path | None = None, dry_run: bool = False) -> dict[str, Any]:
+    target_root = root or state_root()
+    changes: list[str] = []
+    if not dry_run:
+        ensure_private_dir(target_root)
+        ensure_private_dir(target_root / "config")
+        ensure_private_dir(target_root / "agent")
+    for backup_path in migrate_legacy_managed_symlinks(target_root, dry_run=dry_run):
+        changes.append(str(backup_path))
+    if not dry_run:
+        ensure_private_dir(target_root / "agent" / "agents")
+    defaults_path = target_root / "config" / "defaults.toml"
+    roles_path = target_root / "config" / "roles.toml"
+    if write_managed_text(defaults_path, defaults_template(target_root), dry_run=dry_run):
+        changes.append(str(defaults_path))
+    if write_managed_text(roles_path, role_manifest_template(target_root), dry_run=dry_run):
+        changes.append(str(roles_path))
+    for path in install_role_templates(target_root, dry_run=dry_run):
+        changes.append(str(path))
+    web_search_content = (setup_root() / "config" / "pi" / "web-search.json").read_text(encoding="utf-8")
+    agent_files = {
+        target_root / "agent" / "AGENTS.md": (setup_root() / "config" / "pi" / "agent" / "AGENTS.md").read_text(encoding="utf-8"),
+        target_root / "agent" / "models.json": (setup_root() / "config" / "pi" / "agent" / "models.json").read_text(encoding="utf-8"),
+        target_root / "agent" / "settings.json": (setup_root() / "config" / "pi" / "agent" / "settings.base.json").read_text(encoding="utf-8"),
+        target_root / "config" / "web-search.json": web_search_content,
+    }
+    for path, content in agent_files.items():
+        if write_managed_text(path, content, dry_run=dry_run, require_marker=False):
+            changes.append(str(path))
+    for path in ensure_private_pi_home_config(target_root, web_search_content=web_search_content, dry_run=dry_run):
+        changes.append(str(path))
+    if dry_run and not roles_path.exists():
+        for source in public_role_templates():
+            changes.append(str(target_root / "agent" / "agents" / f"{source.stem}.md"))
+    else:
+        for path in generate_pi_agents(target_root, dry_run=dry_run):
+            changes.append(str(path))
+    return {
+        "stateRoot": str(target_root),
+        "roleManifest": str(roles_path),
+        "localRoleManifest": str(target_root / "config" / "roles.local.toml"),
+        "generatedAgentsDir": str(target_root / "agent" / "agents"),
+        "changed": changes,
+        "dryRun": dry_run,
+    }
+
+
+def inspect_bundle_status(root: Path | None = None) -> dict[str, Any]:
+    target_root = root or state_root()
+    config_root = target_root / "config"
+    role_manifest = config_root / "roles.toml"
+    local_manifest = config_root / "roles.local.toml"
+    template_dir = config_root / "role-templates"
+    generated_dir = target_root / "agent" / "agents"
+    plugin_path = target_root / DEFAULT_PLUGIN_RELATIVE
+    runtime = target_root / "pi-fork-runtime" / "node_modules" / ".bin" / "pi"
+    trust_pin = target_root / "pi-fork-trust.json"
+    installed_templates = sorted(template_dir.glob("*.toml")) if template_dir.is_dir() else []
+    generated_agents = sorted(generated_dir.glob("*.md")) if generated_dir.is_dir() else []
+    return {
+        "stateRoot": str(target_root),
+        "config": {
+            "defaults": str(config_root / "defaults.toml"),
+            "defaultsExists": (config_root / "defaults.toml").is_file(),
+            "schemaVersion": CONFIG_SCHEMA_VERSION,
+        },
+        "harness": {
+            "source": str(setup_root() / "bin" / "stronkpi"),
+            "exists": (setup_root() / "bin" / "stronkpi").is_file(),
+        },
+        "roles": {
+            "manifest": str(role_manifest),
+            "manifestExists": role_manifest.is_file(),
+            "localManifest": str(local_manifest),
+            "localManifestExists": local_manifest.is_file(),
+            "templatesDir": str(template_dir),
+            "templateCount": len(installed_templates),
+            "generatedAgentsDir": str(generated_dir),
+            "generatedAgentCount": len(generated_agents),
+        },
+        "plugin": {
+            "expectedPath": str(plugin_path),
+            "installed": plugin_path.is_file(),
+        },
+        "runtime": {
+            "trustPin": str(trust_pin),
+            "trustPinExists": trust_pin.is_file(),
+            "piBinary": str(runtime),
+            "piBinaryExists": runtime.is_file(),
+        },
+    }
 
 
 def static_http_url_check(value: str, label: str) -> None:
@@ -674,10 +1657,11 @@ def download_artifact(url: str) -> Path:
     return Path(tmp_name)
 
 
-def validate_archive(path: Path) -> None:
+def validate_archive(path: Path, *, expected_name: str, expected_version: str) -> None:
     if not path.is_file():
         raise StronkPiError(f"missing artifact: {path}")
     with tarfile.open(path, "r:gz") as archive:
+        package_json: dict[str, Any] | None = None
         with tempfile.TemporaryDirectory(prefix="stronkpi-archive-check.") as tmp:
             root = Path(tmp).resolve()
             for member in archive.getmembers():
@@ -694,6 +1678,107 @@ def validate_archive(path: Path) -> None:
                 target = (root / name).resolve()
                 if not is_relative_to(target, root):
                     raise StronkPiError(f"archive member escapes extraction root: {name}")
+                if name == "package/package.json" and member.isfile():
+                    handle = archive.extractfile(member)
+                    if handle is None:
+                        raise StronkPiError("artifact package.json could not be read")
+                    try:
+                        package_json = json.loads(handle.read(65536).decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        raise StronkPiError("artifact package.json must be valid JSON") from exc
+        if not isinstance(package_json, dict):
+            raise StronkPiError("artifact missing package/package.json")
+        if package_json.get("name") != expected_name:
+            raise StronkPiError(f"artifact package name must be {expected_name}")
+        if package_json.get("version") != expected_version:
+            raise StronkPiError(f"artifact package version must be {expected_version}")
+
+
+def validate_package_pins(package_pins: Any) -> dict[str, Any]:
+    if not isinstance(package_pins, dict):
+        raise StronkPiError("manifest bundle.packagePins must be an object")
+    normalized: dict[str, Any] = {}
+    for key in PACKAGE_PIN_KEYS:
+        item = package_pins.get(key)
+        if not isinstance(item, dict):
+            raise StronkPiError(f"manifest bundle.packagePins.{key} must be an object")
+        name = item.get("name")
+        version = item.get("version")
+        if not isinstance(name, str) or not name:
+            raise StronkPiError(f"manifest bundle.packagePins.{key}.name must be a non-empty string")
+        if not isinstance(version, str) or not version:
+            raise StronkPiError(f"manifest bundle.packagePins.{key}.version must be a non-empty string")
+        fail_if_floating(f"bundle.packagePins.{key}.version", version)
+        normalized[key] = {"name": name, "version": version}
+    return normalized
+
+
+def validate_artifact_identity(
+    *,
+    name: str,
+    version: str,
+    source_repo: str,
+    immutable_tag: str,
+    release_url: str,
+    artifact_url: Any,
+    attestation: str,
+    sha256: str,
+) -> None:
+    expected = EXPECTED_ARTIFACT_IDENTITIES.get(name)
+    if expected is None:
+        raise StronkPiError(f"unknown artifact identity: {name}")
+    expected_repo = expected["sourceRepo"]
+    if source_repo != expected_repo:
+        raise StronkPiError(f"artifact {name} sourceRepo must be {expected_repo}")
+    expected_tag = f"{expected['tagPrefix']}{version}"
+    if immutable_tag != expected_tag:
+        raise StronkPiError(f"artifact {name} immutableTag must be {expected_tag}")
+    expected_release_url = f"https://github.com/{expected_repo}/releases/tag/{expected_tag}"
+    if release_url != expected_release_url:
+        raise StronkPiError(f"artifact {name} releaseUrl must be {expected_release_url}")
+    expected_asset = f"{expected['assetPrefix']}{version}.tgz"
+    if artifact_url is not None:
+        expected_artifact_url = f"https://github.com/{expected_repo}/releases/download/{expected_tag}/{expected_asset}"
+        if artifact_url != expected_artifact_url:
+            raise StronkPiError(f"artifact {name} artifactUrl must be {expected_artifact_url}")
+    if attestation.startswith("github-attestation:"):
+        expected_attestation = f"github-attestation:{expected_repo}/{expected_asset}@sha256:{sha256}"
+        if attestation != expected_attestation:
+            raise StronkPiError(f"artifact {name} attestation must be {expected_attestation}")
+
+
+def validate_bundle_contract_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    bundle = manifest.get("bundle")
+    if not isinstance(bundle, dict):
+        raise StronkPiError("manifest must include a bundle contract")
+    if bundle.get("configSchemaVersion") != CONFIG_SCHEMA_VERSION:
+        raise StronkPiError(f"manifest bundle.configSchemaVersion must be {CONFIG_SCHEMA_VERSION}")
+    if bundle.get("stateRoot") != "~/.stronk-pi":
+        raise StronkPiError("manifest bundle.stateRoot must be ~/.stronk-pi")
+    expected_paths = {
+        "defaultConfigPath": "~/.stronk-pi/config/defaults.toml",
+        "defaultRoleManifestPath": "~/.stronk-pi/config/roles.toml",
+        "localRoleManifestPath": "~/.stronk-pi/config/roles.local.toml",
+        "roleTemplatesPath": "~/.stronk-pi/config/role-templates",
+        "generatedAgentsPath": "~/.stronk-pi/agent/agents",
+    }
+    for key, expected in expected_paths.items():
+        if bundle.get(key) != expected:
+            raise StronkPiError(f"manifest bundle.{key} must be {expected}")
+    harness = bundle.get("harness")
+    if not isinstance(harness, dict):
+        raise StronkPiError("manifest bundle.harness must be an object")
+    if harness.get("command") != "stronkpi" or harness.get("owner") != "stronk-pi":
+        raise StronkPiError("manifest bundle.harness must declare stronk-pi-owned stronkpi")
+    models = bundle.get("models")
+    if not isinstance(models, dict):
+        raise StronkPiError("manifest bundle.models must be an object")
+    for key in ("default", "vision"):
+        value = models.get(key)
+        if not isinstance(value, str) or not value:
+            raise StronkPiError(f"manifest bundle.models.{key} must be a non-empty string")
+    pins = validate_package_pins(bundle.get("packagePins"))
+    return {"models": models, "packagePins": pins}
 
 
 def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
@@ -702,6 +1787,7 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         raise StronkPiError("manifest schemaVersion must be 1")
     compatibility = require_string(manifest, "compatibilityVersion")
     fail_if_floating("compatibilityVersion", compatibility)
+    validate_bundle_contract_manifest(manifest)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise StronkPiError("manifest artifacts must be an array")
@@ -718,7 +1804,7 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         sha256 = require_string(raw_item, "sha256")
         byte_size = require_int(raw_item, "byteSize")
         require_string(raw_item, "workflowRunId")
-        require_string(raw_item, "attestation")
+        attestation = require_string(raw_item, "attestation")
         artifact_compatibility = require_string(raw_item, "compatibilityVersion")
         require_iso_utc(raw_item, "createdAt")
         if "sbom" in raw_item:
@@ -736,6 +1822,16 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             raise StronkPiError("sourceCommit must be a full 40-character lowercase SHA")
         if not re.fullmatch(r"[0-9a-f]{64}", sha256):
             raise StronkPiError("sha256 must be a lowercase SHA-256 hex digest")
+        validate_artifact_identity(
+            name=name,
+            version=version,
+            source_repo=source_repo,
+            immutable_tag=immutable_tag,
+            release_url=release_url,
+            artifact_url=raw_item.get("artifactUrl"),
+            attestation=attestation,
+            sha256=sha256,
+        )
         release_check = check_public_http_url(release_url, "release URL")
         if urlparse(release_check["url"]).scheme != "https":
             raise StronkPiError("release URL must use HTTPS")
@@ -761,15 +1857,15 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         ):
             if provenance.get(key) != expected:
                 raise StronkPiError(f"wrong provenance for {name}: {key}")
-        validate_archive(path)
+        validate_archive(path, expected_name=name, expected_version=version)
         results.append(ArtifactResult(name, version, path, actual_sha, actual_size))
     return results
 
 
 def install_artifacts(results: list[ArtifactResult], dry_run: bool) -> None:
-    root = ensure_private_dir(state_root())
     if dry_run:
         return
+    root = ensure_private_dir(state_root())
     installs = ensure_private_dir(root / "artifacts")
     for result in results:
         dest = installs / f"{result.name}-{result.version}"
@@ -786,18 +1882,28 @@ def install_artifacts(results: list[ArtifactResult], dry_run: bool) -> None:
 def cmd_validate(args: argparse.Namespace) -> int:
     root = setup_root()
     required = [
+        root / "bin" / "stronkpi",
         root / "bin" / "stronkpi-setup",
         root / "install.sh",
+        root / "config" / "defaults.toml",
         root / "lib" / "stronk-pi-guard.py",
         root / "config" / "pi" / "agent" / "AGENTS.md",
         root / "config" / "pi" / "agent" / "models.json",
         root / "config" / "pi" / "agent" / "settings.base.json",
         root / "config" / "pi" / "web-search.json",
         root / "manifests" / "current.json",
+        root / "roles" / "stronk" / "roles.toml",
     ]
     missing = [str(path.relative_to(root)) for path in required if not path.exists()]
     if missing:
         raise StronkPiError("missing required setup files: " + ", ".join(missing))
+    load_toml_document(root / "config" / "defaults.toml")
+    load_toml_document(root / "roles" / "stronk" / "roles.toml")
+    validate_public_role_templates()
+    manifest = load_json(root / "manifests" / "current.json")
+    if manifest.get("schemaVersion") != 1:
+        raise StronkPiError("manifest schemaVersion must be 1")
+    validate_bundle_contract_manifest(manifest)
     for json_path in (
         root / "config" / "pi" / "agent" / "models.json",
         root / "config" / "pi" / "agent" / "settings.base.json",
@@ -808,7 +1914,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
     forbidden_bins = [
         root / "bin" / "sp",
         root / "bin" / "pi",
-        root / "bin" / "stronkpi",
         root / "bin" / "stronk-pi-setup",
     ]
     found = [path.name for path in forbidden_bins if path.exists()]
@@ -849,6 +1954,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         allow_missing=args.allow_missing_mcp,
     )
     errors.extend(str(error) for error in mcp.get("errors", []))
+    warnings: list[str] = [str(warning) for warning in mcp.get("warnings", [])]
 
     network: dict[str, Any] = {
         "url": args.network_url,
@@ -869,16 +1975,28 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             errors.append(str(exc))
 
     env_status = {name: ("set" if os.environ.get(name) else "missing") for name in ENV_NAMES}
+    bundle_status = inspect_bundle_status()
     payload = {
         "ok": not errors,
         "version": VERSION,
         "setupRoot": str(setup_root()),
         "stateRoot": str(state_root()),
         "noNetwork": os.environ.get("STRONKPI_NO_NETWORK") == "1",
+        "bundle": {
+            "compatibilityVersion": BUNDLE_CONTRACT_VERSION,
+            "configSchemaVersion": CONFIG_SCHEMA_VERSION,
+            "manifest": str(setup_root() / "manifests" / "current.json"),
+            "setupOwnsHarness": True,
+        },
+        "harness": bundle_status["harness"],
+        "roleConfig": bundle_status["roles"],
+        "pluginArtifact": bundle_status["plugin"],
+        "runtime": bundle_status["runtime"],
         "dependencies": dependencies,
         "env": env_status,
         "mcpRegistry": mcp,
         "network": network,
+        "warnings": warnings,
         "errors": errors,
     }
     if args.json:
@@ -895,47 +2013,84 @@ def cmd_update(args: argparse.Namespace) -> int:
     if not manifest_path.is_absolute():
         manifest_path = (Path.cwd() / manifest_path).resolve()
     results = verify_manifest(manifest_path)
+    bundle = install_bundle_defaults(dry_run=args.dry_run)
     install_artifacts(results, args.dry_run)
     mode = "dry-run" if args.dry_run else "installed"
     print(f"stronkpi-setup update: {mode} verified {len(results)} artifact(s)")
     for result in results:
         print(f"- {result.name} {result.version} {result.sha256}")
+    print(f"stronkpi-setup update: {mode} bundle config {bundle['roleManifest']}")
+    print(f"stronkpi-setup update: {mode} generated agents {bundle['generatedAgentsDir']}")
+    return 0
+
+
+def cmd_refresh_config(args: argparse.Namespace) -> int:
+    bundle = install_bundle_defaults(dry_run=args.dry_run)
+    mode = "dry-run" if args.dry_run else "refreshed"
+    payload = {
+        "ok": True,
+        "mode": mode,
+        "stateRoot": bundle["stateRoot"],
+        "roleManifest": bundle["roleManifest"],
+        "localRoleManifest": bundle["localRoleManifest"],
+        "generatedAgentsDir": bundle["generatedAgentsDir"],
+        "changed": bundle["changed"],
+        "changedCount": len(bundle["changed"]),
+        "dryRun": bundle["dryRun"],
+    }
+    if args.json:
+        json_out(payload)
+        return 0
+    print(f"stronkpi-setup refresh-config: {mode}")
+    print(f"state_root={payload['stateRoot']}")
+    print(f"role_manifest={payload['roleManifest']}")
+    print(f"roles_local={payload['localRoleManifest']}")
+    print(f"generated_agents={payload['generatedAgentsDir']}")
+    print(f"changed_count={payload['changedCount']}")
     return 0
 
 
 def cmd_install(args: argparse.Namespace) -> int:
     root = setup_root()
     guard = root / "lib" / "stronk-pi-guard.py"
+    harness = root / "bin" / "stronkpi"
     prefix = Path(args.prefix).expanduser()
     if not prefix.is_absolute():
         raise StronkPiError("--prefix must be absolute")
     bin_dir = prefix / "bin"
     setup_target = bin_dir / "stronkpi-setup"
+    harness_target = bin_dir / "stronkpi"
     if args.dry_run:
         print(f"stronkpi-setup install: would install {setup_target}")
-        print("stronkpi-setup install: will not install or wrap stronkpi")
+        print(f"stronkpi-setup install: would install {harness_target}")
         print("stronkpi-setup install: no compatibility aliases will be created")
         return 0
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    setup_target.write_text(
-        "\n".join(
-            [
-                "#!/usr/bin/env python3",
-                "from __future__ import annotations",
-                "",
-                "import os",
-                "import runpy",
-                "",
-                f"os.environ.setdefault('STRONKPI_SETUP_ROOT', {str(root)!r})",
-                f"runpy.run_path({str(guard)!r}, run_name='__main__')",
-                "",
-            ]
-        ),
-        encoding="utf-8",
+    setup_script = "\n".join(
+        [
+            "#!/usr/bin/env python3",
+            "from __future__ import annotations",
+            "",
+            "import runpy",
+            "",
+            f"runpy.run_path({str(guard)!r}, run_name='__main__')",
+            "",
+        ]
     )
-    os.chmod(setup_target, 0o755)
+    harness_script = "\n".join(
+        [
+            "#!/usr/bin/env python3",
+            "from __future__ import annotations",
+            "",
+            "import runpy",
+            "",
+            f"runpy.run_path({str(harness)!r}, run_name='__main__')",
+            "",
+        ]
+    )
+    write_executable_script(setup_target, setup_script)
+    write_executable_script(harness_target, harness_script)
     print(f"stronkpi-setup install: installed {setup_target}")
-    print("stronkpi-setup install: left stronkpi untouched")
+    print(f"stronkpi-setup install: installed {harness_target}")
     return 0
 
 
@@ -943,8 +2098,177 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.dry_run:
         raise StronkPiError("live provider/runtime sessions are not started by setup validation")
     cmd_validate(args)
+    install_bundle_defaults(dry_run=True)
     print("stronkpi-setup run: dry-run ok")
     return 0
+
+
+def validate_harness_control_env() -> None:
+    if dev_overrides_enabled():
+        return
+    blocked = [name for name in CONTROL_PLANE_ENV_NAMES if os.environ.get(name)]
+    if blocked:
+        raise StronkPiError(
+            "control-plane env override(s) require STRONK_PI_DEV_OVERRIDES=1: "
+            + ", ".join(sorted(blocked))
+        )
+
+
+def harness_environment(root: Path) -> dict[str, str]:
+    private_home = root / "home"
+    guard_script = setup_root() / "lib" / "stronk-pi-guard.py"
+    ensure_private_dir(private_home)
+    ensure_private_dir(private_home / ".config")
+    ensure_private_dir(root / "agent" / "sessions")
+    state_link = private_home / ".stronk-pi"
+    if state_link.is_symlink():
+        if state_link.resolve(strict=False) != root.resolve(strict=False):
+            raise StronkPiError(f"private state link points outside Stronk Pi root: {state_link}")
+    elif state_link.exists():
+        raise StronkPiError(f"private state link path must be a symlink managed by stronkpi: {state_link}")
+    else:
+        state_link.symlink_to(root, target_is_directory=True)
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(private_home),
+            "XDG_CONFIG_HOME": str(private_home / ".config"),
+            "PATH": str(root / "pi-fork-runtime" / "node_modules" / ".bin") + os.pathsep + os.environ.get("PATH", ""),
+            "PI_SKIP_VERSION_CHECK": "1",
+            "PI_CODING_AGENT_DIR": str(root / "agent"),
+            "PI_CODING_AGENT_SESSION_DIR": str(root / "agent" / "sessions"),
+            "STRONK_PI_GUARD": str(guard_script),
+            "STRONK_PI_HOOK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "hook"]),
+            "STRONK_PI_CODEX_HOOK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "codex-hook"]),
+            "STRONK_PI_URL_CHECK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "url-check"]),
+            "STRONK_PI_TELEGRAM_COMMAND_JSON": json.dumps(["python3", str(guard_script), "telegram"]),
+            "STRONK_PI_STATE_ROOT": str(root),
+            "STRONK_PI_ROLE_MANIFEST": str(root / "config" / "roles.toml"),
+            "STRONK_PI_SUBAGENT_FACADE": "stronk",
+            "STRONK_PI_SUBAGENT_ADAPTER": "intercom",
+        }
+    )
+    dangerous_hook = default_dangerous_command_hook_path()
+    if dangerous_hook.is_file():
+        env["STRONK_PI_DANGEROUS_COMMAND_HOOK"] = str(dangerous_hook)
+    local_manifest = root / "config" / "roles.local.toml"
+    if local_manifest.is_file():
+        env["STRONK_PI_ROLE_MANIFEST_LOCAL"] = str(local_manifest)
+    if not env.get("KIMI_API_KEY") and env.get("KIMI_CODE_API_KEY"):
+        env["KIMI_API_KEY"] = env["KIMI_CODE_API_KEY"]
+    return env
+
+
+def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
+    status = inspect_bundle_status(root)
+    warnings: list[str] = []
+    if not status["plugin"]["installed"]:
+        warnings.append("plugin artifact is not installed; live launch will fail closed until setup update installs it")
+    if not status["runtime"]["piBinaryExists"]:
+        warnings.append("trusted Pi runtime is not installed; live launch will fail closed until a trust-pinned runtime is installed")
+    payload = {
+        "ok": True,
+        "version": VERSION,
+        "setupRoot": str(setup_root()),
+        "stateRoot": str(root),
+        "bundle": {
+            "compatibilityVersion": BUNDLE_CONTRACT_VERSION,
+            "configSchemaVersion": CONFIG_SCHEMA_VERSION,
+            "changed": bundle["changed"],
+        },
+        "harness": status["harness"],
+        "roleConfig": status["roles"],
+        "pluginArtifact": status["plugin"],
+        "runtime": status["runtime"],
+        "warnings": warnings,
+    }
+    return payload
+
+
+def print_harness_text(label: str, payload: dict[str, Any]) -> None:
+    print(f"stronkpi {label}: ok")
+    print(f"state_root={payload['stateRoot']}")
+    print(f"role_manifest={payload['roleConfig']['manifest']}")
+    print(f"roles_local={payload['roleConfig']['localManifest']}")
+    print(f"roles_local_exists={payload['roleConfig']['localManifestExists']}")
+    print(f"generated_agents={payload['roleConfig']['generatedAgentsDir']}")
+    print(f"generated_agent_count={payload['roleConfig']['generatedAgentCount']}")
+    print(f"plugin_installed={payload['pluginArtifact']['installed']}")
+    print(f"runtime_installed={payload['runtime']['piBinaryExists']}")
+    for warning in payload.get("warnings", []):
+        print(f"warning={warning}")
+
+
+def validate_pi_passthrough_args(pi_args: list[str]) -> None:
+    controlled_prefixes = tuple(f"{flag}=" for flag in CONTROLLED_PI_FLAGS if flag.startswith("--"))
+    for arg in pi_args:
+        if arg in CONTROLLED_PI_FLAGS:
+            raise StronkPiError(f"flag is owned by stronkpi and cannot be passed through: {arg}")
+        if controlled_prefixes and arg.startswith(controlled_prefixes):
+            raise StronkPiError(f"flag is owned by stronkpi and cannot be passed through: {arg.split('=', 1)[0]}")
+
+
+def parse_harness_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="stronkpi")
+    parser.add_argument("--version", action="version", version=f"stronkpi {VERSION}")
+    parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--diagnose", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    args, pi_args = parser.parse_known_args(argv)
+    if pi_args and pi_args[0] == "--":
+        pi_args = pi_args[1:]
+    args.pi_args = pi_args
+    if (args.validate_only or args.diagnose) and args.pi_args:
+        raise StronkPiError("--validate-only/--diagnose do not accept Pi passthrough args")
+    validate_pi_passthrough_args(args.pi_args)
+    return args
+
+
+def harness_main(argv: list[str] | None = None) -> int:
+    args = parse_harness_args(argv)
+
+    validate_harness_control_env()
+    root = harness_state_root()
+    bundle = install_bundle_defaults(root=root, dry_run=False)
+    payload = harness_payload(root, bundle)
+
+    if args.diagnose:
+        if args.json:
+            json_out(payload)
+        else:
+            print_harness_text("diagnose", payload)
+        return 0
+    if args.validate_only:
+        if args.json:
+            json_out(payload)
+        else:
+            print_harness_text("validate", payload)
+        return 0
+
+    if not payload["pluginArtifact"]["installed"]:
+        raise StronkPiError("plugin artifact missing; run stronkpi-setup update before live launch")
+    pi_binary = Path(payload["runtime"]["piBinary"])
+    if not pi_binary.is_file() or not os.access(pi_binary, os.X_OK):
+        raise StronkPiError("trusted Pi runtime missing; install a trust-pinned runtime before live launch")
+    env = harness_environment(root)
+    plugin_path = Path(payload["pluginArtifact"]["expectedPath"])
+    session_dir = root / "agent" / "sessions"
+    launch_args = [
+        "pi",
+        "--no-extensions",
+        "--extension",
+        str(plugin_path),
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--session-dir",
+        str(session_dir),
+    ]
+    if os.environ.get("STRONKPI_NO_NETWORK") == "1":
+        env["PI_OFFLINE"] = "1"
+        launch_args.append("--offline")
+    os.execvpe(str(pi_binary), [*launch_args, *args.pi_args], env)
+    return 127
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -969,6 +2293,11 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--manifest", default=str(setup_root() / "manifests" / "current.json"))
     update.set_defaults(func=cmd_update)
 
+    refresh_config = sub.add_parser("refresh-config")
+    refresh_config.add_argument("--dry-run", action="store_true")
+    refresh_config.add_argument("--json", action="store_true")
+    refresh_config.set_defaults(func=cmd_refresh_config)
+
     install = sub.add_parser("install")
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--prefix", default=str(Path.home() / ".local"))
@@ -977,6 +2306,11 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run")
     run.add_argument("--dry-run", action="store_true")
     run.set_defaults(func=cmd_run)
+
+    sub.add_parser("hook").set_defaults(func=cmd_hook)
+    sub.add_parser("codex-hook").set_defaults(func=cmd_codex_hook)
+    sub.add_parser("url-check").set_defaults(func=cmd_url_check)
+    sub.add_parser("telegram").set_defaults(func=cmd_telegram)
     return parser
 
 

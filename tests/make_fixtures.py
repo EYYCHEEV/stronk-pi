@@ -15,6 +15,40 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = ROOT / "tests" / "fixtures" / "artifacts"
 MANIFEST_DIR = ROOT / "tests" / "fixtures" / "manifests"
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+PLUGIN_REPO = "EYYCHEEV/stronk-pi-plugin"
+PLUGIN_VERSION = "0.1.0"
+PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
+PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
+
+
+def bundle_contract() -> dict:
+    return {
+        "configSchemaVersion": 1,
+        "stateRoot": "~/.stronk-pi",
+        "defaultConfigPath": "~/.stronk-pi/config/defaults.toml",
+        "defaultRoleManifestPath": "~/.stronk-pi/config/roles.toml",
+        "localRoleManifestPath": "~/.stronk-pi/config/roles.local.toml",
+        "roleTemplatesPath": "~/.stronk-pi/config/role-templates",
+        "generatedAgentsPath": "~/.stronk-pi/agent/agents",
+        "harness": {
+            "command": "stronkpi",
+            "owner": "stronk-pi",
+        },
+        "models": {
+            "default": "kimi-code/kimi-for-coding",
+            "vision": "kimi-code/kimi-for-coding",
+        },
+        "packagePins": {
+            "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.5.3"},
+            "subagents": {"name": "pi-subagents", "version": "0.22.0"},
+            "intercom": {"name": "pi-intercom", "version": "0.6.0"},
+            "jiti": {"name": "jiti", "version": "2.7.0"},
+            "ask_user": {"name": "pi-ask-user", "version": "0.8.0"},
+            "tsx": {"name": "tsx", "version": "4.22.4"},
+            "typebox": {"name": "typebox", "version": "1.1.39"},
+            "esbuild": {"name": "esbuild", "version": "0.28.0"},
+        },
+    }
 
 
 def write_tgz(path: Path, files: dict[str, bytes], *, symlink: bool = False, hardlink: bool = False) -> None:
@@ -49,14 +83,15 @@ def base_manifest(artifact_path: Path, sha: str, size: int) -> dict:
     return {
         "schemaVersion": 1,
         "compatibilityVersion": "stronkpi-setup-v1",
+        "bundle": bundle_contract(),
         "artifacts": [
             {
                 "name": "stronk-pi-plugin",
-                "version": "0.1.0",
-                "sourceRepo": "EYYCHEEV/stronk-pi",
+                "version": PLUGIN_VERSION,
+                "sourceRepo": PLUGIN_REPO,
                 "sourceCommit": SOURCE_COMMIT,
-                "immutableTag": "stronk-pi-v0.1.0",
-                "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0",
+                "immutableTag": PLUGIN_TAG,
+                "releaseUrl": f"https://github.com/{PLUGIN_REPO}/releases/tag/{PLUGIN_TAG}",
                 "artifactPath": rel.as_posix(),
                 "sha256": sha,
                 "byteSize": size,
@@ -66,9 +101,9 @@ def base_manifest(artifact_path: Path, sha: str, size: int) -> dict:
                 "compatibilityVersion": "stronkpi-setup-v1",
                 "createdAt": "2026-06-16T00:00:00Z",
                 "provenance": {
-                    "sourceRepo": "EYYCHEEV/stronk-pi",
+                    "sourceRepo": PLUGIN_REPO,
                     "sourceCommit": SOURCE_COMMIT,
-                    "immutableTag": "stronk-pi-v0.1.0",
+                    "immutableTag": PLUGIN_TAG,
                     "workflowRunId": "fixture-run-1"
                 }
             }
@@ -77,7 +112,7 @@ def base_manifest(artifact_path: Path, sha: str, size: int) -> dict:
 
 
 def base_https_manifest(artifact_url: str, sha: str, size: int) -> dict:
-    manifest = base_manifest(Path("../artifacts/stronk-pi-plugin-0.1.0.tgz"), sha, size)
+    manifest = base_manifest(Path("../artifacts") / PLUGIN_ASSET, sha, size)
     item = manifest["artifacts"][0]
     item.pop("artifactPath")
     item["artifactUrl"] = artifact_url
@@ -92,7 +127,8 @@ def main() -> None:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
 
-    good = ARTIFACT_DIR / "stronk-pi-plugin-0.1.0.tgz"
+    good = ARTIFACT_DIR / PLUGIN_ASSET
+    wrong_package_identity = ARTIFACT_DIR / "wrong-package-identity.tgz"
     traversal = ARTIFACT_DIR / "archive-traversal.tgz"
     symlink = ARTIFACT_DIR / "symlink-escape.tgz"
     hardlink = ARTIFACT_DIR / "hardlink-escape.tgz"
@@ -102,10 +138,20 @@ def main() -> None:
         {
             "package/bin/stronkpi": b"#!/bin/sh\nprintf '%s\\n' fixture\n",
             "package/lib/stronk-pi-guard.py": b"print('fixture')\n",
+            "package/src/index.mjs": b"export default function stronkPiFixture() {}\n",
             "package/package.json": b'{"name":"stronk-pi-plugin","version":"0.1.0"}\n',
         },
     )
     write_tgz(traversal, {"../escape": b"bad\n"})
+    write_tgz(
+        wrong_package_identity,
+        {
+            "package/bin/stronkpi": b"#!/bin/sh\nprintf '%s\\n' fixture\n",
+            "package/lib/stronk-pi-guard.py": b"print('fixture')\n",
+            "package/src/index.mjs": b"export default function stronkPiFixture() {}\n",
+            "package/package.json": b'{"name":"stronk-pi","version":"0.1.0"}\n',
+        },
+    )
     write_tgz(symlink, {"package/link": b""}, symlink=True)
     write_tgz(hardlink, {"package/link": b""}, hardlink=True)
 
@@ -116,7 +162,7 @@ def main() -> None:
     write_manifest(
         "good-https-artifact.json",
         base_https_manifest(
-            "https://github.com/EYYCHEEV/stronk-pi/releases/download/stronk-pi-v0.1.0/stronk-pi-plugin-0.1.0.tgz",
+            f"https://github.com/{PLUGIN_REPO}/releases/download/{PLUGIN_TAG}/{PLUGIN_ASSET}",
             good_sha,
             good_size,
         ),
@@ -155,12 +201,27 @@ def main() -> None:
     write_manifest("invalid-created-at.json", created_at)
 
     http_release = json.loads(json.dumps(good_manifest))
-    http_release["artifacts"][0]["releaseUrl"] = "http://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0"
+    http_release["artifacts"][0]["releaseUrl"] = f"http://github.com/{PLUGIN_REPO}/releases/tag/{PLUGIN_TAG}"
     write_manifest("http-release-url-denied.json", http_release)
 
     missing_provenance = json.loads(json.dumps(good_manifest))
     missing_provenance["artifacts"][0].pop("provenance")
     write_manifest("missing-provenance.json", missing_provenance)
+
+    wrong_identity = base_manifest(
+        Path("../artifacts") / wrong_package_identity.name,
+        digest(wrong_package_identity),
+        wrong_package_identity.stat().st_size,
+    )
+    write_manifest("wrong-package-identity.json", wrong_identity)
+
+    missing_bundle = json.loads(json.dumps(good_manifest))
+    missing_bundle.pop("bundle")
+    write_manifest("missing-bundle.json", missing_bundle)
+
+    floating_pin = json.loads(json.dumps(good_manifest))
+    floating_pin["bundle"]["packagePins"]["subagents"]["version"] = "latest"
+    write_manifest("floating-package-pin-denied.json", floating_pin)
 
     for filename, artifact in (
         ("archive-traversal-denied.json", traversal),

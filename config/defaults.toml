@@ -1,0 +1,33 @@
+schema_version = 1
+managed_by = "stronk-pi"
+
+[runtime]
+state_root = "~/.stronk-pi"
+private_home = "~/.stronk-pi/home"
+agent_dir = "~/.stronk-pi/agent"
+session_base = "~/.stronk-pi/agent/sessions"
+
+[harness]
+subagent_facade = "stronk"
+subagent_adapter = "intercom"
+search_provider = "exa"
+
+[models]
+default = "kimi-code/kimi-for-coding"
+vision = "kimi-code/kimi-for-coding"
+
+[roles]
+manifest = "~/.stronk-pi/config/roles.toml"
+local_manifest = "~/.stronk-pi/config/roles.local.toml"
+templates_dir = "~/.stronk-pi/config/role-templates"
+generated_agents_dir = "~/.stronk-pi/agent/agents"
+
+[package_pins]
+mcp_adapter = { name = "pi-mcp-adapter", version = "2.5.3" }
+subagents = { name = "pi-subagents", version = "0.22.0" }
+intercom = { name = "pi-intercom", version = "0.6.0" }
+jiti = { name = "jiti", version = "2.7.0" }
+ask_user = { name = "pi-ask-user", version = "0.8.0" }
+tsx = { name = "tsx", version = "4.22.4" }
+typebox = { name = "typebox", version = "1.1.39" }
+esbuild = { name = "esbuild", version = "0.28.0" }

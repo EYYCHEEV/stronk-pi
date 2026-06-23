@@ -1,9 +1,9 @@
 {
   "artifacts": [
     {
-      "artifactPath": "/tmp/stronk-pi-plugin.tgz",
+      "artifactPath": "../artifacts/wrong-package-identity.tgz",
       "attestation": "fixture-attestation",
-      "byteSize": 301,
+      "byteSize": 295,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
       "immutableTag": "stronk-pi-plugin-v0.1.0",
@@ -16,7 +16,7 @@
       },
       "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.1.0",
       "sbom": "fixture-sbom",
-      "sha256": "ed8f09e4f1cf626af543828e1bec85873951c7c6a898dd0615e796184c90ce1a",
+      "sha256": "2cdf7480cb7c765e7d92f32c5d019b7af6de24262937401ef9d05a418008b3de",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
       "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
       "version": "0.1.0",

@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+
+
+def setup_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def load_guard():
+    guard_path = setup_root() / "lib" / "stronk-pi-guard.py"
+    spec = importlib.util.spec_from_file_location("stronk_pi_guard", guard_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load Stronk Pi guard from {guard_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    guard = load_guard()
+    try:
+        return int(guard.harness_main())
+    except guard.StronkPiError as exc:
+        print(f"stronkpi: {guard.redact(str(exc))}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

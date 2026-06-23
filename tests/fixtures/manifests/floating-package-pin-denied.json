@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "artifactPath": "/tmp/stronk-pi-plugin.tgz",
+      "artifactPath": "../artifacts/stronk-pi-plugin-0.1.0.tgz",
       "attestation": "fixture-attestation",
       "byteSize": 301,
       "compatibilityVersion": "stronkpi-setup-v1",
@@ -60,7 +60,7 @@
       },
       "subagents": {
         "name": "pi-subagents",
-        "version": "0.22.0"
+        "version": "latest"
       },
       "tsx": {
         "name": "tsx",

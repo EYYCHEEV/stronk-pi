@@ -11,8 +11,7 @@ python3 tests/make_fixtures.py
 command -v python3 >/dev/null
 
 sh -n install.sh
-python3 -m py_compile bin/stronkpi-setup
-test ! -e bin/stronkpi
+python3 -m py_compile bin/stronkpi-setup bin/stronkpi
 test ! -e bin/stronk-pi-setup
 find tests -maxdepth 1 -name "*.sh" -exec sh -n {} \;
 
@@ -38,10 +37,9 @@ sh tests/test_install_dry_run.sh
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home"
-export STRONKPI_STATE_ROOT="$tmp/state"
 export XDG_CONFIG_HOME="$tmp/xdg-config"
 export XDG_CACHE_HOME="$tmp/xdg-cache"
-mkdir -p "$HOME" "$STRONKPI_STATE_ROOT" "$XDG_CONFIG_HOME/mcp" "$XDG_CACHE_HOME"
+mkdir -p "$HOME" "$XDG_CONFIG_HOME/mcp" "$XDG_CACHE_HOME"
 cat > "$XDG_CONFIG_HOME/mcp/registry.toml" <<'EOF'
 version = 1
 
@@ -52,5 +50,15 @@ EOF
 
 bin/stronkpi-setup validate
 bin/stronkpi-setup doctor --json --mcp-registry "$XDG_CONFIG_HOME/mcp/registry.toml" >/dev/null
+bin/stronkpi-setup refresh-config --dry-run --json >/dev/null
+bin/stronkpi-setup refresh-config --json >/dev/null
 bin/stronkpi-setup update --dry-run --manifest tests/fixtures/manifests/good-local.json
+bin/stronkpi-setup update --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup run --dry-run
+bin/stronkpi --validate-only >/dev/null
+bin/stronkpi --diagnose --json >/dev/null
+
+prefix="$tmp/prefix"
+bin/stronkpi-setup install --prefix "$prefix"
+"$prefix/bin/stronkpi-setup" validate
+"$prefix/bin/stronkpi" --validate-only >/dev/null
