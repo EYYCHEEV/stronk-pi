@@ -777,6 +777,15 @@ Initial findings corrected mode precedence when default permission metadata and 
 Validation passed with full plugin `npm run check` (189 tests plus `security-check: ok`), focused image/preflight coverage inside that suite, plugin syntax check, plugin `git diff --check`, and the amended image feature commit.
 No live artifact refresh has been performed for this full-yolo path handling fix.
 
+[2026-06-25 03:10 +0800] Operator-approved artifact-only runtime refresh for the `image_read` full-yolo path handling fix is complete.
+Direct pushes to `main` were blocked by GitHub branch protection, so the plugin commits were pushed to `feat/agentic-image-read` and the distribution commits were pushed to `feat/image-read-setup-release`.
+The installed `stronk-pi-plugin-0.1.0` package was backed up and replaced from the verified local source package.
+Setup-managed config was not refreshed because this fix only changes plugin source behavior.
+Artifact backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-030855.tgz`.
+Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-030855`.
+Validation passed with installed artifact smoke, source and installed `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, installed default/Kimi and GLM launcher validation, installed plugin syntax check, and a direct installed-plugin `image_read` probe proving a full-yolo outside-root PNG is analyzed instead of skipped for `path outside allowed image roots`.
+Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-030855` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
+
 ## Artifacts
 
 <!-- Format: - [description](path/or/url) -->
