@@ -786,6 +786,20 @@ Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/packa
 Validation passed with installed artifact smoke, source and installed `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, installed default/Kimi and GLM launcher validation, installed plugin syntax check, and a direct installed-plugin `image_read` probe proving a full-yolo outside-root PNG is analyzed instead of skipped for `path outside allowed image roots`.
 Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-030855` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
 
+[2026-06-25 03:18 +0800] Follow-up fix for the live registered-tool callback shape is complete and refreshed.
+The failed session `019efb0b-1c74-751a-be34-8deaa641280e` proved the previous probe was too shallow: the installed registered `image_read` callback did not receive permission metadata, so the code still inferred restricted allowed roots.
+The source plugin now enforces allowed image roots only for explicit restricted/default modes.
+Full-disk modes bypass the root gate, and missing or unknown permission metadata no longer silently becomes restricted for explicit `image_read`.
+Prompt-time image preflight remains unchanged and root-bounded.
+Regression coverage now includes the registered-tool execution shape with no permission metadata and an `auto` mode case.
+Validation passed with focused image/preflight tests (59 passed), full plugin `npm run check` (191 tests plus `security-check: ok`), plugin syntax check, and plugin diff whitespace check.
+The plugin branch `feat/agentic-image-read` now includes `97803a0 fix(image): do not infer restricted roots without mode`.
+Operator-approved artifact-only refresh replaced the installed `stronk-pi-plugin-0.1.0` package again.
+Artifact backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-031824.tgz`.
+Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-031824`.
+Installed validation passed with installed artifact smoke, source and installed `stronkpi --validate-only`, GLM launcher validation, and a direct installed registered-tool probe against `/Users/eyy/Downloads/procurement visual` proving 3 images analyze with 0 skipped and no `path outside allowed image roots` result.
+Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-031824` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
+
 ## Artifacts
 
 <!-- Format: - [description](path/or/url) -->
