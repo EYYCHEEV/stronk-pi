@@ -1,0 +1,51 @@
+{
+  "skill_name": "stronk-pi-release",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "In stronk-pi, bump the setup version to 0.3.0 and tell me what release checks to run. Do not publish anything.",
+      "expected_output": "Uses stronk-pi-release, runs the setup bump path, keeps the plugin artifact version unchanged, and reports validation without publish or live update actions.",
+      "files": [],
+      "expectations": [
+        "Uses python3 scripts/bump-version.py 0.3.0.",
+        "Runs STRONKPI_NO_NETWORK=1 sh scripts/verify-release-candidate.sh.",
+        "States that plugin artifact import is separate."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Import the plugin BUILD-MANIFEST into stronk-pi from /tmp/stronk-pi-plugin-v0.3.0/BUILD-MANIFEST.json.",
+      "expected_output": "Uses stronk-pi-release, checks artifact and attestation preconditions, runs the import plus offline verification, and reports the online gate separately.",
+      "files": [],
+      "expectations": [
+        "Requires the plugin artifact and attestation to exist or be operator-confirmed before import.",
+        "Uses python3 scripts/import-plugin-release.py with the given BUILD-MANIFEST.json path.",
+        "Runs STRONKPI_NO_NETWORK=1 sh scripts/verify-release-candidate.sh after import.",
+        "Keeps live update commands behind explicit operator confirmation."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Plan the guarded live update for Stronk Pi after the distribution PR merges.",
+      "expected_output": "Uses stronk-pi-release, separates dry-run from non-dry-run update, validates stronkpi afterward, and includes rollback guidance.",
+      "files": [],
+      "expectations": [
+        "Starts with bin/stronkpi-setup update --dry-run --manifest manifests/current.json.",
+        "Requires exact operator confirmation before non-dry-run update.",
+        "Includes bin/stronkpi --validate-only and bin/stronkpi --diagnose --json.",
+        "Reports rollback path for failure after live update."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Edit the Stronk Pi plugin source code and publish the plugin release.",
+      "expected_output": "Does not use stronk-pi-release for plugin source publication. Routes plugin source release work to the stronk-pi-plugin release skill.",
+      "files": [],
+      "expectations": [
+        "States that plugin source edits and publish flow belong in stronk-pi-plugin.",
+        "Does not run distribution import commands.",
+        "Does not propose live runtime update commands."
+      ]
+    }
+  ]
+}

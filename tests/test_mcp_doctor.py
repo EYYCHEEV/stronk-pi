@@ -40,6 +40,9 @@ class McpDoctorTests(unittest.TestCase):
         tools.write_text(body.strip() + "\n", encoding="utf-8")
         return tools
 
+    def write_empty_tools(self, directory: Path) -> Path:
+        return self.write_tools(directory, "")
+
     def test_valid_registry_and_selected_tool_pass(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -76,7 +79,7 @@ class McpDoctorTests(unittest.TestCase):
             )
             registry = tmp / "linked-registry.toml"
             registry.symlink_to(target)
-            result = guard.validate_mcp_registry(registry)
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
         self.assertTrue(result["ok"], result)
         self.assertTrue(result["symlink"])
         self.assertEqual(result["serverCount"], 1)
@@ -133,7 +136,7 @@ class McpDoctorTests(unittest.TestCase):
                 args = ["mcp-remote@latest"]
                 """,
             )
-            result = guard.validate_mcp_registry(registry)
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
         self.assertFalse(result["ok"])
         self.assertIn("floating", "\n".join(result["errors"]))
 
@@ -153,7 +156,7 @@ class McpDoctorTests(unittest.TestCase):
                 args = ["{script}"]
                 """,
             )
-            result = guard.validate_mcp_registry(registry)
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
         self.assertTrue(result["ok"], result)
 
     def test_personal_path_markers_fail_generically(self):
@@ -171,7 +174,7 @@ class McpDoctorTests(unittest.TestCase):
                 args = ["{linux_home_arg}"]
                 """,
             )
-            result = guard.validate_mcp_registry(registry)
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
         self.assertFalse(result["ok"])
         errors = "\n".join(result["errors"])
         self.assertIn("command contains a personal path", errors)
@@ -191,7 +194,7 @@ class McpDoctorTests(unittest.TestCase):
                 env = { EXAMPLE_API_KEY = "sk-aaaaaaaaaaaaaaaaaaaaaaaa" }
                 """,
             )
-            result = guard.validate_mcp_registry(registry)
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
         self.assertFalse(result["ok"])
         errors = "\n".join(result["errors"])
         self.assertIn("secret-like key", errors)
@@ -210,6 +213,7 @@ class McpDoctorTests(unittest.TestCase):
                 args = ["-c", "print('ok')"]
                 """,
             )
+            tools = self.write_empty_tools(tmp)
             env = os.environ.copy()
             env["STRONKPI_NO_NETWORK"] = "1"
             proc = subprocess.run(
@@ -220,6 +224,8 @@ class McpDoctorTests(unittest.TestCase):
                     "--json",
                     "--mcp-registry",
                     str(registry),
+                    "--mcp-tools",
+                    str(tools),
                 ],
                 text=True,
                 stdout=subprocess.PIPE,

@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_PATHS = [
     ROOT / "README.md",
     ROOT / "SECURITY.md",
+    ROOT / ".agents",
     ROOT / "install.sh",
     ROOT / "bin",
     ROOT / "lib",
@@ -17,6 +18,7 @@ PUBLIC_PATHS = [
     ROOT / "docs",
     ROOT / "manifests",
     ROOT / "roles",
+    ROOT / "scripts",
     ROOT / "templates",
     ROOT / ".codex-plugin",
     ROOT / ".github",

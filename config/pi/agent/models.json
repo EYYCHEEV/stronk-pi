@@ -25,6 +25,68 @@
       "apiKey": "MOONSHOT_API_KEY",
       "baseUrl": "https://api.moonshot.ai/v1"
     },
+    "neuralwatt": {
+      "name": "NeuralWatt",
+      "api": "openai-completions",
+      "apiKey": "$NEURALWATT_API_KEY",
+      "baseUrl": "https://api.neuralwatt.com/v1",
+      "compat": {
+        "maxTokensField": "max_tokens",
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "supportsStore": false,
+        "supportsStrictMode": false,
+        "supportsUsageInStreaming": true
+      },
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2 (NeuralWatt)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "input": [
+            "text"
+          ],
+          "contextWindow": 540672,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.45,
+            "output": 4.5,
+            "cacheRead": 0.3625,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "glm-5.2-short",
+          "name": "GLM-5.2 Short (NeuralWatt)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "input": [
+            "text"
+          ],
+          "contextWindow": 199984,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.45,
+            "output": 4.5,
+            "cacheRead": 0.3625,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
     "alibaba-coding": {
       "name": "Alibaba Cloud Coding Plan",
       "api": "openai-completions",

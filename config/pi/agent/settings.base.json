@@ -8,6 +8,8 @@
     "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k2.6",
     "kimi-coding/kimi-for-coding:xhigh",
+    "neuralwatt/glm-5.2",
+    "neuralwatt/glm-5.2-short",
     "alibaba-coding/qwen3-coder-plus",
     "alibaba-coding/qwen3-coder-next",
     "alibaba-coding/qwen3.6-plus"

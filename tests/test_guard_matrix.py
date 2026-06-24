@@ -76,6 +76,24 @@ class PathTests(unittest.TestCase):
                     guard.fail_if_floating("version", value)
 
 
+class ToolGuardTests(unittest.TestCase):
+    def test_image_read_is_allowed_as_distribution_safe_tool(self):
+        result = guard.guarded_tool_decision(
+            "image_read",
+            {"paths": ["screenshots/example.png"]},
+            ROOT,
+            {},
+        )
+        self.assertTrue(result["allow"])
+        self.assertEqual(result["reason"], "distribution-owned safe tool class")
+
+    def test_stale_search_compatibility_tools_are_not_safe_allowlisted(self):
+        for tool in ("get_search_content", "stronk_fetch_content"):
+            with self.subTest(tool=tool):
+                result = guard.guarded_tool_decision(tool, {}, ROOT, {})
+                self.assertFalse(result["allow"])
+                self.assertIn("unknown tool denied by default", result["reason"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-

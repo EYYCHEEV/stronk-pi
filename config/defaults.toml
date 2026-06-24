@@ -16,6 +16,15 @@ search_provider = "exa"
 default = "kimi-coding/kimi-for-coding:xhigh"
 vision = "kimi-coding/kimi-for-coding:xhigh"
 
+[image_preflight]
+enabled = true
+model = "kimi-coding/kimi-for-coding:xhigh"
+max_images = 12
+max_bytes = 5242880
+timeout_ms = 90000
+max_output_tokens = 4096
+failure_mode = "soft"
+
 [roles]
 manifest = "~/.stronk-pi/config/roles.toml"
 local_manifest = "~/.stronk-pi/config/roles.local.toml"

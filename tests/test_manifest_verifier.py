@@ -28,6 +28,9 @@ def load_guard():
 
 
 guard = load_guard()
+PLUGIN_VERSION = guard.DEFAULT_PLUGIN_VERSION
+PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
+PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
 
 
 class ManifestVerifierTests(unittest.TestCase):
@@ -46,7 +49,7 @@ class ManifestVerifierTests(unittest.TestCase):
     def test_good_https_artifact_manifest_verifies_with_mocked_download(self):
         expected_url = (
             "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/"
-            "stronk-pi-plugin-v0.1.0/stronk-pi-plugin-0.1.0.tgz"
+            f"{PLUGIN_TAG}/{PLUGIN_ASSET}"
         )
 
         class FakeResponse(io.BytesIO):
@@ -63,7 +66,7 @@ class ManifestVerifierTests(unittest.TestCase):
         old_getaddrinfo = guard.socket.getaddrinfo
         old_urlopen = guard.urllib.request.urlopen
         old_no_network = os.environ.get("STRONKPI_NO_NETWORK")
-        fixture = ROOT / "tests" / "fixtures" / "artifacts" / "stronk-pi-plugin-0.1.0.tgz"
+        fixture = ROOT / "tests" / "fixtures" / "artifacts" / PLUGIN_ASSET
 
         def fake_getaddrinfo(host, port, type=0):
             self.assertEqual(host, "github.com")
@@ -117,10 +120,10 @@ class ManifestVerifierTests(unittest.TestCase):
         manifest = json.loads(path.read_text(encoding="utf-8"))
         item = manifest["artifacts"][0]
         item["sourceRepo"] = "EYYCHEEV/stronk-pi"
-        item["immutableTag"] = "stronk-pi-v0.1.0"
-        item["releaseUrl"] = "https://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v0.1.0"
+        item["immutableTag"] = f"stronk-pi-v{PLUGIN_VERSION}"
+        item["releaseUrl"] = f"https://github.com/EYYCHEEV/stronk-pi/releases/tag/stronk-pi-v{PLUGIN_VERSION}"
         item["provenance"]["sourceRepo"] = "EYYCHEEV/stronk-pi"
-        item["provenance"]["immutableTag"] = "stronk-pi-v0.1.0"
+        item["provenance"]["immutableTag"] = f"stronk-pi-v{PLUGIN_VERSION}"
         with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
             json.dump(manifest, handle)
             temp_path = Path(handle.name)
@@ -160,7 +163,7 @@ class ManifestVerifierTests(unittest.TestCase):
                 guard.artifact_path(
                     self.manifest("good-local.json"),
                     {
-                        "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.1.0/a.tgz"
+                        "artifactUrl": f"https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/{PLUGIN_TAG}/a.tgz"
                     },
                 )
         finally:
@@ -271,6 +274,9 @@ class ManifestVerifierTests(unittest.TestCase):
             env = guard.harness_environment(root)
 
             self.assertEqual(env["STRONK_PI_GUARD"], str(GUARD_PATH))
+            self.assertEqual(env["STRONK_PI_SEARCH_PROVIDER"], "exa")
+            self.assertEqual(env["STRONK_PI_SUBAGENT_FACADE"], "stronk")
+            self.assertEqual(env["STRONK_PI_SUBAGENT_ADAPTER"], "intercom")
             self.assertEqual(json.loads(env["STRONK_PI_CODEX_HOOK_COMMAND_JSON"]), ["python3", str(GUARD_PATH), "codex-hook"])
             payload = {
                 "session_id": "session-1",
@@ -296,6 +302,44 @@ class ManifestVerifierTests(unittest.TestCase):
             parsed = json.loads(proc.stdout)
             self.assertIs(parsed["continue"], True)
             self.assertEqual(parsed["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
+
+    def test_harness_environment_uses_runtime_harness_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            config = root / "config"
+            config.mkdir(parents=True)
+            (config / "defaults.toml").write_text(
+                "\n".join(
+                    [
+                        'managed_by = "stronk-pi"',
+                        "[harness]",
+                        'search_provider = "tavily"',
+                        'subagent_facade = "stronk"',
+                        'subagent_adapter = "dry-run"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = guard.harness_environment(root)
+
+            self.assertEqual(env["STRONK_PI_SEARCH_PROVIDER"], "tavily")
+            self.assertEqual(env["STRONK_PI_SUBAGENT_FACADE"], "stronk")
+            self.assertEqual(env["STRONK_PI_SUBAGENT_ADAPTER"], "dry-run")
+
+    def test_harness_environment_preserves_explicit_search_provider_override(self):
+        old_provider = os.environ.get("STRONK_PI_SEARCH_PROVIDER")
+        try:
+            os.environ["STRONK_PI_SEARCH_PROVIDER"] = "brave"
+            with tempfile.TemporaryDirectory() as tmp_name:
+                env = guard.harness_environment(Path(tmp_name) / "state")
+            self.assertEqual(env["STRONK_PI_SEARCH_PROVIDER"], "brave")
+        finally:
+            if old_provider is None:
+                os.environ.pop("STRONK_PI_SEARCH_PROVIDER", None)
+            else:
+                os.environ["STRONK_PI_SEARCH_PROVIDER"] = old_provider
 
     def test_write_executable_script_replaces_symlink_not_target(self):
         with tempfile.TemporaryDirectory() as tmp_name:
@@ -380,16 +424,16 @@ class ManifestVerifierTests(unittest.TestCase):
             package_root = artifact_root / "package"
             package_root.mkdir(parents=True)
             (package_root / "package.json").write_text(
-                json.dumps({"name": "stronk-pi-plugin", "version": "0.1.0"}) + "\n",
+                json.dumps({"name": "stronk-pi-plugin", "version": PLUGIN_VERSION}) + "\n",
                 encoding="utf-8",
             )
             (package_root / "new.txt").write_text("new\n", encoding="utf-8")
-            archive_path = tmp / "stronk-pi-plugin-0.1.0.tgz"
+            archive_path = tmp / PLUGIN_ASSET
             with tarfile.open(archive_path, "w:gz") as archive:
                 archive.add(package_root, arcname="package")
 
             state_root = tmp / "home" / ".stronk-pi"
-            existing = state_root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package"
+            existing = state_root / "artifacts" / f"stronk-pi-plugin-{PLUGIN_VERSION}" / "package"
             existing.mkdir(parents=True)
             (existing / "old.txt").write_text("old\n", encoding="utf-8")
             env = os.environ.copy()
@@ -401,7 +445,7 @@ class ManifestVerifierTests(unittest.TestCase):
                     [
                         guard.ArtifactResult(
                             name="stronk-pi-plugin",
-                            version="0.1.0",
+                            version=PLUGIN_VERSION,
                             path=archive_path,
                             sha256="test",
                             byte_size=archive_path.stat().st_size,
@@ -415,7 +459,7 @@ class ManifestVerifierTests(unittest.TestCase):
                 else:
                     os.environ["HOME"] = old_home
 
-            installed = state_root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package"
+            installed = state_root / "artifacts" / f"stronk-pi-plugin-{PLUGIN_VERSION}" / "package"
             self.assertTrue((installed / "new.txt").is_file())
             self.assertFalse((installed / "old.txt").exists())
 
@@ -448,6 +492,190 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertEqual(settings["defaultModel"], "kimi-for-coding")
             self.assertEqual(settings["defaultThinkingLevel"], "xhigh")
             self.assertIn("kimi-coding/kimi-for-coding:xhigh", settings["enabledModels"])
+            defaults = guard.load_toml_document(tmp / "home" / ".stronk-pi" / "config" / "defaults.toml")
+            self.assertEqual(defaults["models"]["vision"], "kimi-coding/kimi-for-coding:xhigh")
+            self.assertEqual(defaults["image_preflight"]["enabled"], True)
+            self.assertEqual(defaults["image_preflight"]["model"], "kimi-coding/kimi-for-coding:xhigh")
+            self.assertEqual(defaults["image_preflight"]["max_images"], 12)
+            self.assertEqual(defaults["image_preflight"]["max_bytes"], 5242880)
+            self.assertEqual(defaults["image_preflight"]["timeout_ms"], 90000)
+            self.assertEqual(defaults["image_preflight"]["max_output_tokens"], 4096)
+            self.assertEqual(defaults["image_preflight"]["failure_mode"], "soft")
+
+    def test_import_codex_roles_autodiscovers_codex_home_roles(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            home = tmp / "home"
+            source = home / ".codex" / "roles" / "stronk"
+            source.mkdir(parents=True)
+            actual_role = tmp / "custom-executor.toml"
+            actual_role.write_text(
+                "\n".join(
+                    [
+                        'model = "gpt-5.5"',
+                        'model_reasoning_effort = "xhigh"',
+                        'model_reasoning_summary = "auto"',
+                        'developer_instructions = """',
+                        "Role: custom executor for imported Codex role testing.",
+                        "",
+                        "Keep changes scoped and verified.",
+                        '"""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (source / "custom-executor.toml").symlink_to(actual_role)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(tmp / "xdg-config"),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+
+            dry_run = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi-setup"), "import-codex-roles", "--dry-run", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+            dry_payload = json.loads(dry_run.stdout)
+            self.assertTrue(dry_payload["dryRun"])
+            self.assertEqual(dry_payload["importedRoles"], ["custom-executor"])
+            self.assertFalse((home / ".stronk-pi").exists())
+
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi-setup"), "import-codex-roles", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads(proc.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["sourceDir"], str(source.resolve(strict=False)))
+            self.assertEqual(payload["importedRoles"], ["custom-executor"])
+
+            template = home / ".stronk-pi" / "config" / "role-templates" / "custom-executor.toml"
+            generated = home / ".stronk-pi" / "agent" / "agents" / "custom-executor.md"
+            template_text = template.read_text(encoding="utf-8")
+            generated_text = generated.read_text(encoding="utf-8")
+            self.assertIn('managed_by = "stronk-pi"', template_text)
+            self.assertIn('codex_model = "gpt-5.5"', template_text)
+            self.assertNotIn("model: gpt-5.5", generated_text)
+            self.assertIn("You are the Pi adapter for the Stronk role `custom-executor`.", generated_text)
+
+    def test_import_codex_roles_autodiscovers_agents_home_roles(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            home = tmp / "home"
+            source = home / ".agents" / "roles" / "stronk"
+            source.mkdir(parents=True)
+            (source / "reviewer.toml").write_text(
+                "\n".join(
+                    [
+                        'developer_instructions = """',
+                        "Role: reviewer imported from the agents role directory.",
+                        "",
+                        "Inspect carefully and report concrete findings.",
+                        '"""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(tmp / "xdg-config"),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi-setup"), "import-codex-roles", "--dry-run", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads(proc.stdout)
+            self.assertEqual(payload["sourceDir"], str(source.resolve(strict=False)))
+            self.assertEqual(payload["importedRoles"], ["reviewer"])
+            self.assertTrue(payload["dryRun"])
+
+    def test_imported_codex_role_survives_refresh_config(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            home = tmp / "home"
+            source = tmp / "codex-roles"
+            source.mkdir()
+            (source / "executor.toml").write_text(
+                "\n".join(
+                    [
+                        'model = "gpt-5.5"',
+                        'developer_instructions = """',
+                        "Role: imported executor role that should survive refresh.",
+                        "",
+                        "This text proves refresh-config preserved the imported template.",
+                        '"""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(tmp / "xdg-config"),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+            import_proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "bin" / "stronkpi-setup"),
+                    "import-codex-roles",
+                    "--source",
+                    str(source),
+                    "--json",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(import_proc.returncode, 0, import_proc.stderr)
+            refresh_proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi-setup"), "refresh-config", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(refresh_proc.returncode, 0, refresh_proc.stderr)
+
+            template = home / ".stronk-pi" / "config" / "role-templates" / "executor.toml"
+            generated = home / ".stronk-pi" / "agent" / "agents" / "executor.md"
+            template_text = template.read_text(encoding="utf-8")
+            generated_text = generated.read_text(encoding="utf-8")
+            self.assertIn('source_of_truth = "codex-role-toml"', template_text)
+            self.assertIn('codex_model = "gpt-5.5"', template_text)
+            self.assertIn("imported executor role that should survive refresh", generated_text)
+            self.assertNotIn("model: gpt-5.5", generated_text)
 
 
 if __name__ == "__main__":

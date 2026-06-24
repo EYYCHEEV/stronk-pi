@@ -17,8 +17,11 @@ find tests -maxdepth 1 -name "*.sh" -exec sh -n {} \;
 
 python3 -m py_compile \
   lib/stronk-pi-guard.py \
+  scripts/bump-version.py \
+  scripts/import-plugin-release.py \
   tests/make_fixtures.py \
   tests/test_manifest_verifier.py \
+  tests/test_release_scripts.py \
   tests/test_guard_matrix.py \
   tests/test_mcp_doctor.py \
   tests/test_public_surface.py
@@ -29,6 +32,7 @@ python3 -m json.tool manifests/current.json >/dev/null
 
 python3 -m unittest \
   tests/test_manifest_verifier.py \
+  tests/test_release_scripts.py \
   tests/test_guard_matrix.py \
   tests/test_mcp_doctor.py \
   tests/test_public_surface.py
@@ -47,11 +51,26 @@ version = 1
 command = "python3"
 args = ["-c", "print('ok')"]
 EOF
+touch "$XDG_CONFIG_HOME/mcp/tools.empty"
 
 bin/stronkpi-setup validate
-bin/stronkpi-setup doctor --json --mcp-registry "$XDG_CONFIG_HOME/mcp/registry.toml" >/dev/null
+bin/stronkpi-setup doctor --json --mcp-registry "$XDG_CONFIG_HOME/mcp/registry.toml" --mcp-tools "$XDG_CONFIG_HOME/mcp/tools.empty" >/dev/null
 bin/stronkpi-setup refresh-config --dry-run --json >/dev/null
 bin/stronkpi-setup refresh-config --json >/dev/null
+mkdir -p "$tmp/codex-roles"
+cat > "$tmp/codex-roles/import-smoke.toml" <<'EOF'
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+developer_instructions = """
+Role: import smoke role.
+
+Verify that Codex role TOML can be imported into Stronk Pi runtime templates.
+"""
+EOF
+bin/stronkpi-setup import-codex-roles --source "$tmp/codex-roles" --dry-run --json >/dev/null
+bin/stronkpi-setup import-codex-roles --source "$tmp/codex-roles" --json >/dev/null
+test -f "$HOME/.stronk-pi/config/role-templates/import-smoke.toml"
+test -f "$HOME/.stronk-pi/agent/agents/import-smoke.md"
 bin/stronkpi-setup update --dry-run --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup update --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup run --dry-run
