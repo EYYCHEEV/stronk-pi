@@ -39,7 +39,7 @@ def bundle_contract() -> dict:
             "vision": "kimi-coding/kimi-for-coding:xhigh",
         },
         "packagePins": {
-            "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.5.3"},
+            "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.9.0"},
             "subagents": {"name": "pi-subagents", "version": "0.22.0"},
             "intercom": {"name": "pi-intercom", "version": "0.6.0"},
             "jiti": {"name": "jiti", "version": "2.7.0"},

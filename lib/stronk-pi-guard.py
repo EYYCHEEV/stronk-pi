@@ -41,6 +41,8 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
 )
 DEFAULT_PLUGIN_VERSION = "0.1.0"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
+DEFAULT_MCP_ADAPTER_NAME = "pi-mcp-adapter"
+DEFAULT_MCP_ADAPTER_VERSION = "2.9.0"
 SHARED_HOOK_TIMEOUT_SEC = 5.0
 LEGACY_MANAGED_RUNTIME_PATHS = (
     Path("agent") / "agents",
@@ -152,6 +154,7 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[/\\]")
 MCP_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+PROJECT_MCP_CONFIG_RELATIVES = (Path(".mcp.json"), Path(".pi") / "mcp.json")
 DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi"
 EXPECTED_ARTIFACT_IDENTITIES = {
     "stronk-pi-plugin": {
@@ -1726,6 +1729,181 @@ def validate_mcp_registry(
     return result
 
 
+def unique_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def default_mcp_tools_path(cwd: Path) -> Path | None:
+    candidate = cwd / ".mcp-tools"
+    return candidate if candidate.exists() else None
+
+
+def find_project_mcp_configs(cwd: Path) -> list[Path]:
+    return [cwd / relative for relative in PROJECT_MCP_CONFIG_RELATIVES if (cwd / relative).exists()]
+
+
+def selected_mcp_tools_for_runtime(cwd: Path, tools_path: Path | None = None) -> tuple[Path | None, list[str]]:
+    selected_path = tools_path or default_mcp_tools_path(cwd)
+    if selected_path is None:
+        return None, []
+    if not selected_path.exists():
+        raise StronkPiError(f"MCP tools allowlist missing: {selected_path}")
+    if selected_path.is_symlink():
+        raise StronkPiError(f"MCP tools allowlist must not be a symlink: {selected_path}")
+    return selected_path, unique_ordered(load_mcp_tools(selected_path))
+
+
+def mcp_registry_file_for_read(path: Path) -> Path:
+    return path.resolve() if path.exists() and path.is_symlink() else path
+
+
+def build_mcp_adapter_config(registry_path: Path, selected_tools: list[str]) -> dict[str, Any]:
+    registry = load_mcp_registry_toml(mcp_registry_file_for_read(registry_path))
+    servers = registry.get("servers")
+    if not isinstance(servers, dict):
+        raise StronkPiError("MCP registry must define [servers]")
+    mcp_servers: dict[str, dict[str, Any]] = {}
+    for name in unique_ordered(selected_tools):
+        server = servers.get(name)
+        if not isinstance(server, dict):
+            raise StronkPiError(f"MCP selected tool is not in registry: {name}")
+        entry: dict[str, Any] = {
+            "command": str(server.get("command") or ""),
+            "args": list(server.get("args") or []),
+            "lifecycle": "lazy",
+        }
+        env: dict[str, str] = {}
+        raw_env = server.get("env", {})
+        if isinstance(raw_env, dict):
+            env.update({str(key): str(value) for key, value in raw_env.items()})
+        for env_name in server.get("env_vars") or []:
+            env[str(env_name)] = "${" + str(env_name) + "}"
+        if env:
+            entry["env"] = env
+        mcp_servers[name] = entry
+    return {
+        "settings": {
+            "toolPrefix": "server",
+            "directTools": False,
+            "idleTimeout": 10,
+        },
+        "mcpServers": mcp_servers,
+    }
+
+
+def mcp_adapter_pin(defaults: dict[str, Any]) -> tuple[str, str]:
+    pins = defaults.get("package_pins")
+    if not isinstance(pins, dict):
+        return DEFAULT_MCP_ADAPTER_NAME, DEFAULT_MCP_ADAPTER_VERSION
+    adapter = pins.get("mcp_adapter")
+    if not isinstance(adapter, dict):
+        return DEFAULT_MCP_ADAPTER_NAME, DEFAULT_MCP_ADAPTER_VERSION
+    name = adapter.get("name")
+    version = adapter.get("version")
+    return (
+        name if isinstance(name, str) and name.strip() else DEFAULT_MCP_ADAPTER_NAME,
+        version if isinstance(version, str) and version.strip() else DEFAULT_MCP_ADAPTER_VERSION,
+    )
+
+
+def mcp_adapter_candidate_paths(root: Path, name: str, version: str) -> list[Path]:
+    return [
+        root / "agent" / "npm" / "node_modules" / name,
+        root / "artifacts" / f"{name}-{version}" / "package",
+    ]
+
+
+def matching_package_root(path: Path, *, name: str, version: str) -> bool:
+    package_json = path / "package.json"
+    if not package_json.is_file():
+        return False
+    try:
+        package_data = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return package_data.get("name") == name and package_data.get("version") == version
+
+
+def resolve_mcp_adapter_package(root: Path, defaults: dict[str, Any]) -> tuple[Path, bool]:
+    name, version = mcp_adapter_pin(defaults)
+    candidates = mcp_adapter_candidate_paths(root, name, version)
+    for candidate in candidates:
+        if matching_package_root(candidate, name=name, version=version):
+            return candidate, True
+    return candidates[0], False
+
+
+def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
+    launch_cwd = cwd or Path.cwd()
+    defaults = load_runtime_defaults(root)
+    name, version = mcp_adapter_pin(defaults)
+    adapter_path, adapter_installed = resolve_mcp_adapter_package(root, defaults)
+    tools_path, selected = selected_mcp_tools_for_runtime(launch_cwd)
+    project_configs = find_project_mcp_configs(launch_cwd)
+    return {
+        "configured": bool(selected),
+        "enabled": bool(selected) and adapter_installed and not project_configs,
+        "packageName": name,
+        "packageVersion": version,
+        "adapterPath": str(adapter_path),
+        "adapterInstalled": adapter_installed,
+        "configPath": str(root / "agent" / "mcp.json"),
+        "registryPath": str(default_mcp_registry_path()),
+        "toolsPath": str(tools_path) if tools_path else None,
+        "selectedTools": selected,
+        "projectConfigFiles": [str(path) for path in project_configs],
+    }
+
+
+def prepare_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
+    launch_cwd = cwd or Path.cwd()
+    tools_path, selected = selected_mcp_tools_for_runtime(launch_cwd)
+    defaults = load_runtime_defaults(root)
+    adapter_path, adapter_installed = resolve_mcp_adapter_package(root, defaults)
+    status = inspect_mcp_adapter_runtime(root, cwd=launch_cwd)
+    if not selected:
+        return status
+    project_configs = find_project_mcp_configs(launch_cwd)
+    if project_configs:
+        paths = ", ".join(str(path) for path in project_configs)
+        raise StronkPiError(
+            "project MCP config file(s) would bypass the Stronk selected-server boundary: "
+            f"{paths}; move selected server names to .mcp-tools and definitions to the MCP registry"
+        )
+    registry_path = default_mcp_registry_path()
+    mcp = validate_mcp_registry(registry_path, tools_path=tools_path, allow_missing=False)
+    if not mcp["ok"]:
+        raise StronkPiError("MCP registry invalid: " + "; ".join(str(error) for error in mcp["errors"]))
+    if not adapter_installed:
+        name, version = mcp_adapter_pin(defaults)
+        raise StronkPiError(
+            f"MCP adapter package missing: expected {name}@{version} at {adapter_path}; "
+            "install a verified adapter package before launching with selected MCP servers"
+        )
+    config = build_mcp_adapter_config(registry_path, selected)
+    config_path = root / "agent" / "mcp.json"
+    if write_private_runtime_text(config_path, json.dumps(config, indent=2, sort_keys=True) + "\n", dry_run=False):
+        status["configChanged"] = True
+    else:
+        status["configChanged"] = False
+    status.update(
+        {
+            "enabled": True,
+            "adapterPath": str(adapter_path),
+            "configPath": str(config_path),
+            "selectedTools": selected,
+        }
+    )
+    return status
+
+
 def check_network_access(url: str) -> dict[str, Any]:
     result: dict[str, Any] = {"url": url, "ok": False, "skipped": False}
     if os.environ.get("STRONKPI_NO_NETWORK") == "1":
@@ -2387,6 +2565,11 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
         warnings.append("plugin artifact is not installed; live launch will fail closed until setup update installs it")
     if not status["runtime"]["piBinaryExists"]:
         warnings.append("trusted Pi runtime is not installed; live launch will fail closed until a trust-pinned runtime is installed")
+    mcp_status = inspect_mcp_adapter_runtime(root)
+    if mcp_status["configured"] and not mcp_status["adapterInstalled"]:
+        warnings.append("selected MCP servers are configured but pi-mcp-adapter is not installed; live launch will fail closed")
+    if mcp_status["projectConfigFiles"]:
+        warnings.append("project MCP config files are present; live launch will fail closed to preserve the .mcp-tools boundary")
     payload = {
         "ok": True,
         "version": VERSION,
@@ -2401,6 +2584,7 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
         "roleConfig": status["roles"],
         "pluginArtifact": status["plugin"],
         "runtime": status["runtime"],
+        "mcpAdapter": mcp_status,
         "warnings": warnings,
     }
     return payload
@@ -2416,8 +2600,43 @@ def print_harness_text(label: str, payload: dict[str, Any]) -> None:
     print(f"generated_agent_count={payload['roleConfig']['generatedAgentCount']}")
     print(f"plugin_installed={payload['pluginArtifact']['installed']}")
     print(f"runtime_installed={payload['runtime']['piBinaryExists']}")
+    print(f"mcp_selected_tools={','.join(payload['mcpAdapter']['selectedTools'])}")
+    print(f"mcp_adapter_installed={payload['mcpAdapter']['adapterInstalled']}")
+    print(f"mcp_adapter_enabled={payload['mcpAdapter']['enabled']}")
     for warning in payload.get("warnings", []):
         print(f"warning={warning}")
+
+
+def build_pi_launch_args(
+    *,
+    plugin_path: Path,
+    session_dir: Path,
+    mcp_status: dict[str, Any] | None = None,
+    offline: bool = False,
+) -> list[str]:
+    launch_args = [
+        "pi",
+        "--no-extensions",
+        "--extension",
+        str(plugin_path),
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--session-dir",
+        str(session_dir),
+    ]
+    if mcp_status and mcp_status.get("enabled"):
+        launch_args.extend(
+            [
+                "--extension",
+                str(mcp_status["adapterPath"]),
+                "--mcp-config",
+                str(mcp_status["configPath"]),
+            ]
+        )
+    if offline:
+        launch_args.append("--offline")
+    return launch_args
 
 
 def validate_pi_passthrough_args(pi_args: list[str]) -> None:
@@ -2474,20 +2693,16 @@ def harness_main(argv: list[str] | None = None) -> int:
     env = harness_environment(root)
     plugin_path = Path(payload["pluginArtifact"]["expectedPath"])
     session_dir = root / "agent" / "sessions"
-    launch_args = [
-        "pi",
-        "--no-extensions",
-        "--extension",
-        str(plugin_path),
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--session-dir",
-        str(session_dir),
-    ]
-    if os.environ.get("STRONKPI_NO_NETWORK") == "1":
+    mcp_status = prepare_mcp_adapter_runtime(root)
+    offline = os.environ.get("STRONKPI_NO_NETWORK") == "1"
+    if offline:
         env["PI_OFFLINE"] = "1"
-        launch_args.append("--offline")
+    launch_args = build_pi_launch_args(
+        plugin_path=plugin_path,
+        session_dir=session_dir,
+        mcp_status=mcp_status,
+        offline=offline,
+    )
     os.execvpe(str(pi_binary), [*launch_args, *args.pi_args], env)
     return 127
 

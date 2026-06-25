@@ -34,7 +34,7 @@
       },
       "mcp_adapter": {
         "name": "pi-mcp-adapter",
-        "version": "2.5.3"
+        "version": "2.9.0"
       },
       "subagents": {
         "name": "pi-subagents",
