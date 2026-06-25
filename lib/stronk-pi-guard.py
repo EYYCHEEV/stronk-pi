@@ -29,10 +29,16 @@ VERSION = "0.1.0"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
+IMPORTED_CODEX_ROLE_MARKER = 'source_of_truth = "codex-role-toml"'
 LEGACY_MANAGED_MARKERS = ('managed_by = "stronk-pi-setup"',)
 DEFAULT_ROLE_MANIFEST_RELATIVE = Path("roles") / "stronk" / "roles.toml"
 ROLE_TEMPLATE_RELATIVE = Path("roles") / "stronk" / "templates"
 DEFAULTS_RELATIVE = Path("config") / "defaults.toml"
+DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
+    Path(".codex") / "roles" / "stronk",
+    Path(".agents") / "roles" / "stronk",
+    Path(".agents") / "codex" / "roles" / "stronk",
+)
 DEFAULT_PLUGIN_VERSION = "0.1.0"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 SHARED_HOOK_TIMEOUT_SEC = 5.0
@@ -155,6 +161,7 @@ EXPECTED_ARTIFACT_IDENTITIES = {
     },
 }
 PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
+IMAGE_PREFLIGHT_HANDLE_RE = re.compile(r"^image-preflight-[0-9A-Fa-f-]{36}$")
 ENV_NAMES = (
     "DEEPSEEK_API_KEY",
     "MOONSHOT_API_KEY",
@@ -163,7 +170,8 @@ ENV_NAMES = (
     "ALIBABA_CLOUD_CODING_PLAN_API_KEY",
 )
 READ_ONLY_TOOLS = {"read", "grep", "find", "ls", "glob", "todoread"}
-WEB_TOOLS = {"web_search", "code_search", "fetch_content", "stronk_fetch_content", "get_search_content"}
+WEB_TOOLS = {"web_search", "code_search", "fetch_content"}
+IMAGE_TOOLS = {"image_read", "image_preflight_read"}
 SESSION_TOOLS = {"todowrite", "todoread", "question", "ask_user"}
 MUTATING_TOOLS = {"bash", "write", "edit", "patch", "apply_patch", "multi_edit", "user_bash"}
 CODEX_HOOK_EVENTS = {
@@ -548,7 +556,18 @@ def validate_mutation_target(tool: str, payload: dict[str, Any], cwd: Path) -> t
     return target, f"{tool} target stays under cwd"
 
 
+def validate_image_tool(tool: str, payload: dict[str, Any]) -> tuple[bool, str]:
+    if tool == "image_preflight_read":
+        handle = payload.get("handle")
+        if not isinstance(handle, str) or not IMAGE_PREFLIGHT_HANDLE_RE.fullmatch(handle.strip()):
+            raise StronkPiError("image_preflight_read requires a valid image preflight handle")
+    return True, "distribution-owned safe tool class"
+
+
 def guarded_tool_decision(tool: str, payload: dict[str, Any], cwd: Path, context: dict[str, Any]) -> dict[str, Any]:
+    if tool in IMAGE_TOOLS:
+        allowed, reason = validate_image_tool(tool, payload)
+        return {"allow": allowed, "reason": reason, "input": payload}
     if tool in {"mcp", "stronk_subagent"} | WEB_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
         return {"allow": True, "reason": "distribution-owned safe tool class", "input": payload}
     if tool == "subagent":
@@ -1110,6 +1129,16 @@ def role_template_name(path: Path) -> str:
 ROLE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
+def extract_role_description(instructions: str, role_name: str) -> str:
+    for line in instructions.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("role:"):
+            description = stripped.split(":", 1)[1].strip().rstrip(".")
+            if description:
+                return description[:180]
+    return role_name.replace("-", " ")
+
+
 def validate_public_role_templates() -> list[str]:
     templates = public_role_templates()
     if not templates:
@@ -1143,9 +1172,136 @@ def install_role_templates(root: Path, *, dry_run: bool) -> list[Path]:
     target_dir = root / "config" / "role-templates"
     for source in public_role_templates():
         target = target_dir / source.name
+        if target.is_file() and IMPORTED_CODEX_ROLE_MARKER in target.read_text(
+            encoding="utf-8",
+            errors="ignore",
+        ):
+            continue
         if write_managed_text(target, source.read_text(encoding="utf-8"), dry_run=dry_run):
             changed.append(target)
     return changed
+
+
+def discover_codex_role_dir(source: str | None = None) -> Path:
+    if source:
+        candidate = Path(source).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve(strict=False)
+        if not candidate.is_dir():
+            raise StronkPiError(f"Codex role source directory missing: {candidate}")
+        return candidate.resolve(strict=False)
+    home = Path.home()
+    checked: list[Path] = []
+    for relative in DEFAULT_CODEX_ROLE_DIR_CANDIDATES:
+        candidate = (home / relative).resolve(strict=False)
+        checked.append(candidate)
+        if candidate.is_dir() and any(candidate.glob("*.toml")):
+            return candidate
+    raise StronkPiError(
+        "no Codex role source directory found; checked "
+        + ", ".join(str(path) for path in checked)
+    )
+
+
+def codex_role_files(source_dir: Path) -> list[Path]:
+    files = sorted(source_dir.glob("*.toml"))
+    if not files:
+        raise StronkPiError(f"no Codex role TOMLs found under {source_dir}")
+    for path in files:
+        if not path.is_file():
+            raise StronkPiError(f"Codex role TOML must be a file: {path}")
+        if not ROLE_NAME_RE.fullmatch(path.stem):
+            raise StronkPiError(f"invalid Codex role filename: {path.name}")
+    return files
+
+
+def normalized_imported_role(path: Path) -> tuple[str, str]:
+    role = load_toml_document(path)
+    raw_name = role.get("name") or path.stem
+    if not isinstance(raw_name, str) or not ROLE_NAME_RE.fullmatch(raw_name):
+        raise StronkPiError(f"invalid Codex role name in {path}")
+    instructions = role.get("developer_instructions")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise StronkPiError(f"Codex role missing developer_instructions: {path}")
+    raw_description = role.get("description")
+    description = (
+        raw_description.strip()
+        if isinstance(raw_description, str) and raw_description.strip()
+        else extract_role_description(instructions, raw_name)
+    )
+    lines = [
+        "# Imported from a local Codex role definition by stronkpi-setup.",
+        "# Pi model selection stays in the Stronk Pi role manifest and local overlay.",
+        f"name = {toml_quote(raw_name)}",
+        f"description = {toml_quote(description)}",
+        f"{MANAGED_MARKER}",
+        IMPORTED_CODEX_ROLE_MARKER,
+    ]
+    for source_key, target_key in (
+        ("model", "codex_model"),
+        ("model_reasoning_effort", "codex_model_reasoning_effort"),
+        ("model_reasoning_summary", "codex_model_reasoning_summary"),
+    ):
+        value = role.get(source_key)
+        if isinstance(value, str) and value.strip():
+            lines.append(f"{target_key} = {toml_quote(value.strip())}")
+    lines.append(f"developer_instructions = {toml_quote(instructions.strip())}")
+    return raw_name, "\n".join(lines) + "\n"
+
+
+def import_codex_roles(
+    *,
+    source: str | None = None,
+    root: Path | None = None,
+    dry_run: bool = False,
+    refresh: bool = True,
+) -> dict[str, Any]:
+    target_root = root or state_root()
+    source_dir = discover_codex_role_dir(source)
+    source_files = codex_role_files(source_dir)
+    outputs: dict[Path, str] = {}
+    role_names: list[str] = []
+    target_dir = target_root / "config" / "role-templates"
+    for source_file in source_files:
+        role_name, content = normalized_imported_role(source_file)
+        role_names.append(role_name)
+        outputs[target_dir / f"{role_name}.toml"] = content
+    if len(set(role_names)) != len(role_names):
+        raise StronkPiError("duplicate Codex role names")
+
+    bootstrap_changes: list[str] = []
+    if not dry_run:
+        bootstrap = install_bundle_defaults(root=target_root, dry_run=False)
+        bootstrap_changes = list(bootstrap["changed"])
+
+    changed: list[str] = []
+    for path, content in sorted(outputs.items()):
+        if write_managed_text(path, content, dry_run=dry_run):
+            changed.append(str(path))
+
+    generated_changed: list[str] = []
+    generated_dir = target_root / "agent" / "agents"
+    if refresh:
+        if dry_run:
+            generated_changed = [str(generated_dir / f"{name}.md") for name in sorted(role_names)]
+        else:
+            generated_changed = [str(path) for path in generate_pi_agents(target_root, dry_run=False)]
+
+    return {
+        "ok": True,
+        "sourceDir": str(source_dir),
+        "stateRoot": str(target_root),
+        "targetTemplatesDir": str(target_dir),
+        "generatedAgentsDir": str(generated_dir),
+        "importedRoles": sorted(role_names),
+        "importedRoleCount": len(role_names),
+        "bootstrapChanged": bootstrap_changes,
+        "changed": changed,
+        "generatedChanged": generated_changed,
+        "changedCount": len(changed) + len(generated_changed),
+        "dryRun": dry_run,
+        "refreshed": refresh,
+    }
 
 
 def load_runtime_role_config(root: Path) -> tuple[Path, Path | None, dict[str, Any], list[Path], Path]:
@@ -2076,6 +2232,25 @@ def cmd_refresh_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_codex_roles(args: argparse.Namespace) -> int:
+    payload = import_codex_roles(
+        source=args.source,
+        dry_run=args.dry_run,
+        refresh=not args.no_refresh,
+    )
+    mode = "dry-run" if args.dry_run else "imported"
+    if args.json:
+        json_out(payload)
+        return 0
+    print(f"stronkpi-setup import-codex-roles: {mode}")
+    print(f"source_dir={payload['sourceDir']}")
+    print(f"target_templates={payload['targetTemplatesDir']}")
+    print(f"generated_agents={payload['generatedAgentsDir']}")
+    print(f"imported_role_count={payload['importedRoleCount']}")
+    print(f"changed_count={payload['changedCount']}")
+    return 0
+
+
 def cmd_install(args: argparse.Namespace) -> int:
     root = setup_root()
     guard = root / "lib" / "stronk-pi-guard.py"
@@ -2140,9 +2315,26 @@ def validate_harness_control_env() -> None:
         )
 
 
+def load_runtime_defaults(root: Path) -> dict[str, Any]:
+    defaults_path = root / "config" / "defaults.toml"
+    if defaults_path.is_file():
+        return load_toml_document(defaults_path)
+    return load_toml_document(setup_root() / DEFAULTS_RELATIVE)
+
+
+def harness_string(defaults: dict[str, Any], key: str, fallback: str) -> str:
+    harness = defaults.get("harness")
+    if isinstance(harness, dict):
+        value = harness.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return fallback
+
+
 def harness_environment(root: Path) -> dict[str, str]:
     private_home = root / "home"
     guard_script = setup_root() / "lib" / "stronk-pi-guard.py"
+    defaults = load_runtime_defaults(root)
     ensure_private_dir(private_home)
     ensure_private_dir(private_home / ".config")
     ensure_private_dir(root / "agent" / "sessions")
@@ -2170,10 +2362,13 @@ def harness_environment(root: Path) -> dict[str, str]:
             "STRONK_PI_TELEGRAM_COMMAND_JSON": json.dumps(["python3", str(guard_script), "telegram"]),
             "STRONK_PI_STATE_ROOT": str(root),
             "STRONK_PI_ROLE_MANIFEST": str(root / "config" / "roles.toml"),
-            "STRONK_PI_SUBAGENT_FACADE": "stronk",
-            "STRONK_PI_SUBAGENT_ADAPTER": "intercom",
+            "STRONK_PI_SUBAGENT_FACADE": harness_string(defaults, "subagent_facade", "stronk"),
+            "STRONK_PI_SUBAGENT_ADAPTER": harness_string(defaults, "subagent_adapter", "intercom"),
         }
     )
+    search_provider = harness_string(defaults, "search_provider", "")
+    if search_provider and not env.get("STRONK_PI_SEARCH_PROVIDER"):
+        env["STRONK_PI_SEARCH_PROVIDER"] = search_provider
     dangerous_hook = default_dangerous_command_hook_path()
     if dangerous_hook.is_file():
         env["STRONK_PI_DANGEROUS_COMMAND_HOOK"] = str(dangerous_hook)
@@ -2323,6 +2518,23 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_config.add_argument("--dry-run", action="store_true")
     refresh_config.add_argument("--json", action="store_true")
     refresh_config.set_defaults(func=cmd_refresh_config)
+
+    import_codex_roles_parser = sub.add_parser("import-codex-roles")
+    import_codex_roles_parser.add_argument(
+        "--source",
+        help=(
+            "Codex role TOML directory; defaults to ~/.codex/roles/stronk, "
+            "then ~/.agents/roles/stronk, then ~/.agents/codex/roles/stronk"
+        ),
+    )
+    import_codex_roles_parser.add_argument("--dry-run", action="store_true")
+    import_codex_roles_parser.add_argument("--json", action="store_true")
+    import_codex_roles_parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="import role templates without regenerating runtime Pi agent Markdown",
+    )
+    import_codex_roles_parser.set_defaults(func=cmd_import_codex_roles)
 
     install = sub.add_parser("install")
     install.add_argument("--dry-run", action="store_true")

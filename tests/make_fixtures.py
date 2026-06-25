@@ -139,7 +139,7 @@ def main() -> None:
             "package/bin/stronkpi": b"#!/bin/sh\nprintf '%s\\n' fixture\n",
             "package/lib/stronk-pi-guard.py": b"print('fixture')\n",
             "package/src/index.mjs": b"export default function stronkPiFixture() {}\n",
-            "package/package.json": b'{"name":"stronk-pi-plugin","version":"0.1.0"}\n',
+            "package/package.json": f'{{"name":"stronk-pi-plugin","version":"{PLUGIN_VERSION}"}}\n'.encode(),
         },
     )
     write_tgz(traversal, {"../escape": b"bad\n"})
@@ -149,7 +149,7 @@ def main() -> None:
             "package/bin/stronkpi": b"#!/bin/sh\nprintf '%s\\n' fixture\n",
             "package/lib/stronk-pi-guard.py": b"print('fixture')\n",
             "package/src/index.mjs": b"export default function stronkPiFixture() {}\n",
-            "package/package.json": b'{"name":"stronk-pi","version":"0.1.0"}\n',
+            "package/package.json": f'{{"name":"stronk-pi","version":"{PLUGIN_VERSION}"}}\n'.encode(),
         },
     )
     write_tgz(symlink, {"package/link": b""}, symlink=True)

@@ -48,6 +48,76 @@ the setup-managed defaults, Pi agent settings, model config, role templates,
 and generated role Markdown into `~/.stronk-pi/` without launching Pi.
 The shipped coding default is `kimi-coding/kimi-for-coding` with Pi
 `defaultThinkingLevel` set to `xhigh`.
+Image vision preflight defaults live in `[image_preflight]` in the same
+defaults file.
+The shipped image count default is 12 for images attached to or explicitly
+pasted into the current user turn.
+The vision response token budget defaults to 4096 and is clamped from 1024 to
+8192 before provider calls.
+The default vision model is also mirrored by `[models].vision` and
+`[pi].vision_model` in the role manifest.
+Environment overrides take final precedence over those public runtime config
+files.
+When the active model metadata declares image input support, the plugin leaves
+images on the native Pi path instead of summarizing them first.
+For text-only models, successful preflight replaces pasted local image paths
+with stable image labels before the main model sees the prompt.
+The injected context is evidence-first rather than caption-only.
+It includes an Image Evidence Index and image-scoped evidence IDs such as
+`image-1.E1`, `image-2.N1`, and `image-3.I1`, which keeps repeated local IDs
+from multi-image vision summaries traceable to the source image.
+It preserves image-type neutral evidence such as scene/composition, subjects,
+objects, attributes/state, relationships/activity, visible text/symbols,
+structured content such as documents/charts/code/UI, domain-specific details,
+uncertainties, and scoped negative evidence where the vision model provides
+them.
+The prompt explicitly tells the downstream model not to treat omitted,
+unknown, unreadable, cropped, or not-visible details as absent.
+For prompt-time preflight, `[image_preflight].max_output_tokens` is treated as
+a per-image response budget; multi-image requests scale the provider budget
+within Stronk Pi's hard cap.
+The provider call remains one multi-image request; only the saved readback
+artifacts are split into three-image groups.
+The inline prompt block stays bounded.
+When session metadata is available, the plugin saves extended bounded
+sanitized analysis text under the private session state.
+The model-facing inline block stays compact: image labels, safe filenames,
+MIME/size hints, and opaque `image_preflight_read` handles grouped at up to
+three images per handle.
+Text-only models must read the relevant artifact group before making visual
+claims.
+That artifact contains text evidence only, not raw image data or base64.
+Prompt-time preflight does not recursively inspect folders or tool-discovered
+paths after the turn starts.
+Agentic image reading is handled by the registered `image_read` plugin tool.
+That tool is for text-only models that discover local image files after the
+prompt starts.
+It accepts one explicit image path in `paths`, or one bounded `directory` scan
+that must resolve exactly one image.
+It keeps `recursive = false` unless explicitly requested and reuses the same
+configured vision preflight model route and evidence renderer as prompt-time
+preflight.
+The tool output is structured text only; raw image payloads and unnecessary
+absolute local paths are not returned to the text-only model.
+The input hook uses Pi's extension UI surface for a plugin-owned temporary
+animated TUI widget while preflight analyzes images.
+It then clears that keyed status/widget and emits bounded notifications for
+completion, skips, and failure-note fallback.
+These defaults are only the setup/runtime config contract.
+Live image preflight behavior requires the installed plugin artifact to contain
+the matching implementation.
+`manifests/current.json` remains pinned to the last imported plugin release
+until a new `stronk-pi-plugin` release manifest is imported and verified.
+
+`stronkpi-setup import-codex-roles` is the explicit bridge for local Codex role
+definitions.
+It imports from an operator-selected Codex role TOML directory, or from the
+standard home-owned role directories, into
+`~/.stronk-pi/config/role-templates/`.
+The command does not mutate this repo's public role templates and does not make
+Stronk Pi depend on operator-local source trees.
+Imported Codex model metadata is recorded as source metadata; active Pi model
+selection remains controlled by the Stronk Pi role manifest and local overlay.
 
 ## MCP Registry Doctor
 
