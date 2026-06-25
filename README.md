@@ -135,6 +135,19 @@ filename/source/MIME/byte metadata.
 Evidence IDs are image-scoped, such as `image-1.E1`, `image-2.U1`, and
 `image-3.I1`, so repeated local IDs from multi-image vision output remain
 traceable.
+The configured `max_output_tokens` value is treated as a per-image vision
+budget for prompt-time preflight; multi-image turns get a scaled provider
+request budget within Stronk Pi's hard caps.
+Prompt-time preflight still sends one multi-image vision request; only the
+saved readback artifacts are split into three-image groups.
+When a persisted Stronk Pi session is available, the plugin also writes the
+extended bounded sanitized prompt-time image analysis to a private session
+artifact.
+The inline block remains bounded and compact: it carries only image labels,
+safe filenames, MIME/size hints, and opaque handles grouped at up to three
+images per handle.
+Text-only models must call `image_preflight_read` with the relevant handle to
+read the extended text artifact in bounded chunks before making visual claims.
 Preflight only handles images attached to or explicitly pasted into the current
 user turn.
 Images discovered later by agent tool use can be inspected through the

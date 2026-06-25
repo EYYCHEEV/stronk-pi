@@ -140,13 +140,30 @@ enabled = true
 model = "kimi-coding/kimi-for-coding:xhigh"
 max_images = 12
 max_bytes = 5242880
-timeout_ms = 90000
+timeout_ms = 360000
+stream_idle_timeout_ms = 60000
 max_output_tokens = 4096
 failure_mode = "soft"
 ```
 
 `max_images` applies to images attached to or explicitly pasted into the
 current user turn.
+`max_output_tokens` is treated as a per-image vision budget for prompt-time
+preflight, while the inline context remains bounded for the downstream
+text-only model.
+`timeout_ms` is the hard preflight deadline.
+For streaming Kimi vision preflight, `stream_idle_timeout_ms` aborts the
+provider call when no text or reasoning progress is observed for that interval.
+Prompt-time preflight still sends one multi-image vision request; only the
+private readback artifacts are split into three-image groups.
+When the prompt-time preflight block says an extended analysis artifact was saved,
+the inline context is only a compact artifact index with image labels, safe
+filenames, MIME/size hints, and artifact handles grouped at up to three images
+per handle.
+The model can call `image_preflight_read` with the relevant opaque handle to
+read the extended sanitized text in chunks before making visual claims.
+The artifact reader does not return raw image bytes, base64, or unnecessary
+absolute local paths.
 It does not make a text-only model recursively inspect folders.
 If the agent later discovers image files through shell or file tools, that
 uses the registered `image_read` tool instead.

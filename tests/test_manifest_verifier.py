@@ -498,7 +498,8 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertEqual(defaults["image_preflight"]["model"], "kimi-coding/kimi-for-coding:xhigh")
             self.assertEqual(defaults["image_preflight"]["max_images"], 12)
             self.assertEqual(defaults["image_preflight"]["max_bytes"], 5242880)
-            self.assertEqual(defaults["image_preflight"]["timeout_ms"], 90000)
+            self.assertEqual(defaults["image_preflight"]["timeout_ms"], 360000)
+            self.assertEqual(defaults["image_preflight"]["stream_idle_timeout_ms"], 60000)
             self.assertEqual(defaults["image_preflight"]["max_output_tokens"], 4096)
             self.assertEqual(defaults["image_preflight"]["failure_mode"], "soft")
 

@@ -65,6 +65,15 @@ The tool should reuse the same configured image vision preflight model route and
 - [x] Update public docs to distinguish prompt-time preflight from explicit agentic image reading.
 - [x] Run source, distribution, launcher, smoke, path-scan, and diff validation for the follow-up.
 - [x] Record final review, risks, runtime-refresh status, and operator decision in this ExecPlan log.
+- [x] Lock the prompt-time preflight extended-analysis artifact design after session truncation feedback.
+- [x] Implement session-scoped extended sanitized prompt-time preflight artifacts and the `image_preflight_read` text-artifact tool.
+- [x] Scale prompt-time vision request output tokens by prompt image count while preserving the configured per-image budget clamp.
+- [x] Add focused tests for artifact handles, redaction, extended-context preservation, registered tool surface, and provider payload budgeting.
+- [x] Refine artifact-backed prompt-time inline context into a compact bounded artifact index that tells text-only models to call `image_preflight_read`.
+- [x] Split saved prompt-time preflight artifacts into three-image `image_preflight_read` handle groups while preserving one multi-image vision provider request.
+- [x] Run full source, distribution, path-scan, and diff validation for the prompt-time artifact follow-up.
+- [x] Run read-only Stronk swarm verification for the prompt-time artifact follow-up.
+- [x] Record final prompt-time artifact review, risks, runtime-refresh status, and operator decision in this ExecPlan log.
 
 ## Open Questions
 
@@ -80,3 +89,11 @@ The tool should reuse the same configured image vision preflight model route and
   Decision: Use a registered Stronk Pi plugin tool first because it can reuse the existing vision preflight route and avoids adding a new runtime boundary.
 - [x] What should the agentic image-reading tool be called?
   Decision: Use neutral tool name `image_read` and UI label `Image Read`.
+- [x] How should prompt-time preflight preserve extended multi-image analysis when the inline context block is bounded?
+  Decision: Keep the model-facing inline block bounded, save extended bounded sanitized text analysis under private session state when session metadata is available, expose only an opaque `image_preflight_read` handle, and let the model read the artifact in bounded chunks when needed.
+- [x] Should prompt-time `max_output_tokens` be shared by a multi-image batch or treated per image?
+  Decision: Treat `[image_preflight].max_output_tokens` as a per-image budget and scale the provider request budget by prompt image count within Stronk Pi hard caps, while keeping one multi-image provider request to preserve cross-image comparison and avoid new partial-call failure semantics.
+- [x] What should the inline prompt-time image context say when extended artifact handles are available?
+  Decision: Treat the inline block as a compact bounded artifact index, include only image labels, safe filenames, MIME/size hints, and relevant artifact handles, and instruct text-only models to call `image_preflight_read` before making visual claims.
+- [x] Should prompt-time preflight batch vision provider calls or split readback artifacts?
+  Decision: Keep one multi-image provider request for cross-image comparison and split only the private `image_preflight_read` artifacts into deterministic groups of up to three images per handle.

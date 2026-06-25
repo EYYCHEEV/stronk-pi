@@ -85,7 +85,7 @@ Real source probing with the operator's clipboard PNG and `neuralwatt/glm-5.2:xh
 Full source validation passed in both repos, temp-HOME `refresh-config` passed, and independent read-only review found no code issues after stale superseded log wording was corrected.
 
 [2026-06-24] Started follow-up multi-image optimization and folder-read design session.
-Scope: raise the daily-use multi-image default to 12 where safely bounded, evaluate whether batching is required, inspect session `019ef9e8-40a3-7e75-b0f3-6c466f945072`, and clarify that agent-initiated folder image reads are outside prompt-time preflight.
+Scope: raise the daily-use multi-image default to 12 where safely bounded, evaluate whether batching is required, inspect a prior image-preflight session, and clarify that agent-initiated folder image reads are outside prompt-time preflight.
 The later 2026-06-25 follow-up resolved that boundary with the registered `image_read` plugin tool.
 
 [2026-06-24] Started follow-up image evidence traceability improvement.
@@ -217,7 +217,7 @@ Refresh backups:
 - Source validation for the final Kimi correction passed on 2026-06-24 with plugin `npm run check` (149 tests plus `security-check: ok`), plugin syntax checks, plugin `git diff --check`, distribution JSON validation, `STRONKPI_NO_NETWORK=1 bin/stronkpi-setup validate`, distribution offline suite (52 tests), targeted distribution unittests (46 tests), py_compile, distribution `git diff --check`, temp-HOME config refresh assertions, and a real Kimi source preflight against the operator clipboard PNG.
 - Independent read-only review used `code-reviewer`, `fork_context=false`, and accepted the code/config changes with no source findings.
   The only finding was stale ExecPlan wording from the superseded Moonshot/OpenAI-compatible and credential-precedence attempts; the log now marks those as superseded and records the current built-in Kimi Anthropic Messages behavior.
-- Follow-up session `019ef9e8-40a3-7e75-b0f3-6c466f945072` confirmed the universal schema worked on a non-UI diner breakfast photo: the text-only model answered from preflight context, did not call image read tools, and refused to invent a source website when no visible evidence supported it.
+- A follow-up persisted session confirmed the universal schema worked on a non-UI diner breakfast photo: the text-only model answered from preflight context, did not call image read tools, and refused to invent a source website when no visible evidence supported it.
 - Read-only multi-image swarm used architect, explorer, and qa-tester roles with `fork_context=false`.
   All agents agreed the 12-image bump is not config-only because the plugin hard cap was 8, prompt-time preflight does not scan folders, and batching should be deferred unless provider limits or quality issues are observed.
 - Source plugin now defaults and clamps image preflight to 12 images, scans up to 24 candidate paths or attachments, keeps one vision request for up to 12 images, and adds regressions for 12-image request shape, 13th-image skip behavior, and folder non-expansion.
@@ -787,7 +787,7 @@ Validation passed with installed artifact smoke, source and installed `stronkpi 
 Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-030855` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
 
 [2026-06-25 03:18 +0800] Follow-up fix for the live registered-tool callback shape is complete and refreshed.
-The failed session `019efb0b-1c74-751a-be34-8deaa641280e` proved the previous probe was too shallow: the installed registered `image_read` callback did not receive permission metadata, so the code still inferred restricted allowed roots.
+The failed external-folder image-read session proved the previous probe was too shallow: the installed registered `image_read` callback did not receive permission metadata, so the code still inferred restricted allowed roots.
 The source plugin now enforces allowed image roots only for explicit restricted/default modes.
 Full-disk modes bypass the root gate, and missing or unknown permission metadata no longer silently becomes restricted for explicit `image_read`.
 Prompt-time image preflight remains unchanged and root-bounded.
@@ -797,8 +797,100 @@ The plugin branch `feat/agentic-image-read` now includes `97803a0 fix(image): do
 Operator-approved artifact-only refresh replaced the installed `stronk-pi-plugin-0.1.0` package again.
 Artifact backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-031824.tgz`.
 Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-031824`.
-Installed validation passed with installed artifact smoke, source and installed `stronkpi --validate-only`, GLM launcher validation, and a direct installed registered-tool probe against `/Users/eyy/Downloads/procurement visual` proving 3 images analyze with 0 skipped and no `path outside allowed image roots` result.
+Installed validation passed with installed artifact smoke, source and installed `stronkpi --validate-only`, GLM launcher validation, and a direct installed registered-tool probe against an external Downloads-folder image directory proving 3 images analyze with 0 skipped and no `path outside allowed image roots` result.
 Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-031824` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
+
+[2026-06-25 04:00 +0800] Follow-up prompt-time preflight extended-analysis artifacts started after a persisted three-image session showed a preflight block ending with `[truncated by Stronk Pi]`.
+Read-only Stronk design swarm used `explorer` and `architect` roles with `fork_context=false`; both found that prompt-time `renderVisionContext` truncates the injected block at 12000 characters and provider output budgeting was effectively per multi-image request.
+The source plugin now keeps the inline prompt-time preflight block bounded, saves extended bounded sanitized prompt-time analysis under private session state when session metadata is available, exposes only an opaque `image_preflight_read` handle, and lets text-only models read that artifact in bounded chunks.
+The source plugin also scales prompt-time vision request output tokens by prompt image count while preserving the configured per-image clamp, one multi-image request, and an aggregate hard cap.
+The follow-up hardening makes `image_preflight_read` fail closed without a verified session binding, denies cross-session artifact reads, derives transcript-only session directories from transcript filenames, strips path metasegments from artifact directories, and surfaces whether the extended artifact was capped.
+The distribution guard validates the `image_preflight_read` handle shape before treating the tool as distribution-safe.
+Validation passed with plugin syntax check, focused artifact/session/token/custom-tool tests, full plugin `npm run check` (194 tests plus `security-check: ok`), source installed-artifact smoke, distribution guard matrix, distribution public-surface tests, distribution offline validation (55 tests), setup validation, source and installed `stronkpi --validate-only`, `sp --validate-only`, `sp-glm --validate-only`, `bin/stronkpi --diagnose --json`, path/stale-wording scans, and diff whitespace checks in both repos.
+Read-only Stronk swarm verification used code-reviewer, security-reviewer, and qa-tester with `fork_context=false`.
+Security found no remaining findings after hardening.
+QA passed source behavior and confirmed the live installed plugin artifact is still stale for this feature.
+Code review found one low stale "full" wording issue in the tool prompt snippet; the final source changed it to "extended" and reran syntax plus focused registration/artifact tests.
+No live `~/.stronk-pi` plugin artifact refresh was performed for this prompt-time artifact follow-up.
+The installed `stronkpi` wrapper points at this source repo, so the distribution guard change is active through the source-linked wrapper; the next operator decision is whether to approve an artifact-only refresh for `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package`.
+
+[2026-06-25 04:51 +0800] Operator-approved artifact-only runtime refresh for prompt-time extended image preflight artifacts is complete.
+The installed `stronk-pi-plugin-0.1.0` package was backed up and replaced from the verified local plugin source package.
+Setup-managed config was not refreshed because this follow-up changes plugin source behavior and distribution guard/docs/tests, not setup-owned config defaults.
+Final refresh backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-045026.tgz`.
+Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-045026`.
+Installed validation passed with installed artifact symbol scan for `image_preflight_read`, `writeImagePreflightArtifact`, `Extended Image Analysis Artifact`, and capped-artifact output; `npm run smoke:installed`; source and installed `stronkpi --validate-only`; `sp --validate-only`; `sp-glm --validate-only`; `bin/stronkpi-setup validate`; `bin/stronkpi --diagnose --json`; and a direct installed artifact smoke that created a prompt-time image preflight artifact, read it through `image_preflight_read`, confirmed `Artifact capped: no`, and confirmed no-session read denial.
+Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-045026` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, `sp-glm --validate-only`, and `npm run smoke:installed` from the `stronk-pi-plugin` source repo.
+
+[2026-06-25 05:02 +0800] Follow-up diagnosis of persisted session `019efb69...6378` found the refreshed code did run and did save an extended image preflight artifact.
+The session prompt contained `Extended Image Analysis Artifact` with handle `image-preflight-61256c53-...`, and the artifact existed under private session state with 13,595 characters and `truncated=false`.
+The inline prompt block was still capped at 12,000 characters by design, so it ended with `[truncated by Stronk Pi]`; the assistant answered from the bounded inline block instead of calling `image_preflight_read`.
+The real bug found in that session was provider evidence-ID drift in the three-image batch response: image-2 and image-3 sections contained leading `image-1.E...` ids even though the Image Evidence Index was correct.
+The source plugin renderer now retargets a mismatched leading scoped evidence id to the current image section and retargets citations with that same wrong label inside the item, while preserving deliberate cross-image citations when the item's own id is already correctly scoped.
+Validation passed with focused evidence-scoping regressions and full plugin `npm run check` (195 tests plus `security-check: ok`).
+No live artifact refresh has been performed for this evidence-ID retargeting source fix yet.
+The next operator decision is whether to approve another artifact-only refresh for `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package`.
+
+[2026-06-25 05:20 +0800] Follow-up source refinement changes artifact-backed prompt-time inline context from "use this as the image input" to an explicit bounded image summary index.
+When `writeImagePreflightArtifact` returns an `image_preflight_read` handle, the inline preflight block now tells text-only models to call `image_preflight_read` before answering details omitted from the bounded summaries, details hidden by `[truncated by Stronk Pi]`, or details the user asks for that are not shown inline.
+Prompt-time preflight without an artifact handle keeps the previous "do not call file or image read tools" wording.
+Focused tests now assert the artifact-backed summary-index wording, the artifact read rule, the artifact handle instruction, and the non-artifact legacy wording.
+Validation passed with `node --check src/index.mjs`, focused prompt-time artifact/evidence tests (7 passed), full plugin `npm run check` (195 tests plus `security-check: ok`), and `git diff --check` in both repos.
+No live artifact refresh has been performed for this summary-index source refinement yet.
+The next operator decision is whether to approve another artifact-only refresh for `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package`.
+
+[2026-06-25 05:39 +0800] Follow-up compactness refinement removes repeated nonessential provenance from artifact-backed inline prompt-time preflight context and from rewritten prompt image labels.
+Analyzed image path replacements now use compact labels like `[image-1; screenshot.png]`; skipped and failed labels use `[...; skipped]` and `[...; failed]`.
+When an extended artifact handle is available, the inline context now renders as a compact text block: header, artifact handle, one-line Image Evidence Index, one compact summary line per image, bounded skipped reasons when needed, and no bullet-list provenance such as `source=`, `citation_prefix=`, or repeated `analyzed by Stronk Pi image vision preflight`.
+The rich full artifact remains available through `image_preflight_read` for detailed evidence.
+Public docs now describe the artifact-backed inline block as a compact image index with minimal summaries and scoped evidence IDs.
+Validation passed with `node --check src/index.mjs`, focused image/preflight regression tests (11 passed), full plugin `npm run check` (195 tests plus `security-check: ok`), and docs/source review.
+No live artifact refresh has been performed for this compactness refinement yet.
+The next operator decision is whether to approve another artifact-only refresh for `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package`.
+
+[2026-06-25 05:52 +0800] Follow-up refinement removes artifact-backed inline per-image summaries entirely.
+The inline prompt-time preflight block is now only an artifact index: model name, analyzed count, artifact handle, artifact character count/capped flag, compact Image Evidence Index, and bounded skipped-image reasons.
+It explicitly tells the text-only model not to make visual claims from the inline block alone and to call `image_preflight_read` first, then cite evidence IDs from the artifact.
+The now-unused compact summary helper functions were removed from the plugin source.
+Public docs and the plan now describe the artifact-backed inline block as an index-only route to the session artifact.
+Validation passed with `node --check src/index.mjs`, focused prompt-time artifact tests (7 passed), focused image/preflight regression tests (10 passed), full plugin `npm run check` (195 tests plus `security-check: ok`), stale-source wording scans, a direct 12-image renderer probe, and `git diff --check` in both repos.
+No live artifact refresh has been performed for this index-only source refinement yet.
+The next operator decision is whether to approve another artifact-only refresh for `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package`.
+
+[2026-06-25 06:09 +0800] Operator-approved artifact-only runtime refresh for the index-only prompt-time preflight context is complete.
+The installed `stronk-pi-plugin-0.1.0` package was replaced from the verified local plugin source package.
+Setup-managed config was not refreshed because this change only affects plugin source and smoke-test expectations.
+The first replacement exposed a stale source smoke assertion that still expected verbose `[... analyzed by Stronk Pi image vision preflight]` prompt labels.
+The source smoke assertion was updated to the compact `[image-1; filename.png]` label, verified, and the installed package was replaced a second time so the installed artifact contents match current source.
+Pre-refresh backup for rollback to the previous live package: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-060659.tgz`.
+Intermediate backup before the final matching-package replacement: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-060807.tgz`.
+Previous package directories retained: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-060659` and `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-060807`.
+Installed validation passed with installed artifact syntax check, installed source scan for `Artifact index only`, direct installed 12-image renderer probe proving the blank line after the human-readable status line and no inline `Summaries:`, corrected `npm run smoke:installed`, source and installed `stronkpi --validate-only`, interactive-zsh `sp --validate-only` and `sp-glm --validate-only`, `bin/stronkpi-setup validate`, and `bin/stronkpi --diagnose --json`.
+Rollback path: to return to the pre-refresh package, restore the `20260625-060659` backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-060659` back to `package`, then rerun `stronkpi --validate-only`, `sp-glm --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed`.
+
+[2026-06-25 06:25 +0800] Follow-up prompt-time preflight artifact grouping started after operator feedback that the saved context should be split by image groups while keeping the vision request batched.
+Read-only Stronk swarm used architect, code-reviewer, and qa-tester roles with `fork_context=false`.
+The agreed design keeps one multi-image vision provider request so cross-image comparison remains available, then splits only the private `image_preflight_read` artifacts into deterministic groups of up to three images per handle.
+The inline artifact index now exposes `Artifact Groups` with ranges such as `image-1..image-3`, while the Image Evidence Index points each image label to its group range.
+Each saved group artifact keeps original global labels, adds sibling-handle navigation, and preserves image-scoped evidence IDs without renumbering.
+Validation passed with `node --check src/index.mjs`, `node --test test/extension.test.mjs --test-name-pattern "image preflight"`, full plugin `npm run check` (196 tests plus `security-check: ok`), source installed-artifact smoke with `STRONK_PI_SMOKE_PLUGIN=src/index.mjs`, distribution `STRONKPI_NO_NETWORK=1 bin/stronkpi-setup validate`, source and installed launcher validation for `stronkpi`, `sp`, and `sp-glm`, `bin/stronkpi --diagnose --json`, `git diff --check` in both repos, and a direct source 12-image preflight probe proving one provider call with 12 images and four three-image artifact groups.
+No live `~/.stronk-pi` plugin artifact refresh has been performed for this grouping source change yet.
+
+[2026-06-25 13:35 +0800] Operator-approved artifact-only runtime refresh for three-image prompt-time preflight artifact groups is complete.
+The installed `stronk-pi-plugin-0.1.0` package was backed up and replaced from the verified local plugin source package.
+Setup-managed config was not refreshed because this change only affects plugin source.
+Final refresh backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-133432.tgz`.
+Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-133432`.
+Installed validation passed with installed package syntax check before and after replacement, installed artifact smoke, installed source scan for the three-image grouping symbols, source and installed launcher validation for `stronkpi`, `sp`, and `sp-glm`, `bin/stronkpi --diagnose --json`, and a direct installed 12-image grouping probe proving one provider call with 12 images, four artifact handles, and group-scoped readback metadata.
+Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-133432` back to `package`, then rerun `stronkpi --validate-only`, `sp-glm --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed`.
+
+[2026-06-25 18:35 +0800] Operator-approved artifact-only runtime refresh for Kimi streaming image preflight timeout handling is complete.
+The installed `stronk-pi-plugin-0.1.0` package was backed up and replaced from the verified local plugin source package.
+Setup-managed config was not rewritten because live `~/.stronk-pi/config/defaults.toml` already contains `timeout_ms = 360000` and `stream_idle_timeout_ms = 60000`.
+Final refresh backup: `~/.stronk-pi/artifacts/backups/2026-06-25/stronk-pi-plugin-0.1.0.bak.20260625-183427.tgz`.
+Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260625-183442`.
+Installed validation passed with installed package syntax check, installed source scan for the six-minute timeout constants and Kimi streaming helpers, `npm run smoke:installed`, source and installed `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and a direct installed-plugin real Kimi probe proving one prompt-time image preflight call used `stream: true`, requested `text/event-stream`, returned no preflight failure, and analyzed one image.
+Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260625-183442` back to `package`, then rerun `stronkpi --validate-only`, `bin/stronkpi --diagnose --json`, and `npm run smoke:installed`.
 
 ## Artifacts
 

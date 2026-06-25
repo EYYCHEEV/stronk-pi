@@ -78,14 +78,21 @@ class PathTests(unittest.TestCase):
 
 class ToolGuardTests(unittest.TestCase):
     def test_image_read_is_allowed_as_distribution_safe_tool(self):
-        result = guard.guarded_tool_decision(
-            "image_read",
-            {"paths": ["screenshots/example.png"]},
-            ROOT,
-            {},
+        cases = (
+            ("image_read", {"paths": ["screenshots/example.png"]}),
+            ("image_preflight_read", {"handle": "image-preflight-00000000-0000-0000-0000-000000000000"}),
         )
-        self.assertTrue(result["allow"])
-        self.assertEqual(result["reason"], "distribution-owned safe tool class")
+        for tool, payload in cases:
+            with self.subTest(tool=tool):
+                result = guard.guarded_tool_decision(tool, payload, ROOT, {})
+                self.assertTrue(result["allow"])
+                self.assertEqual(result["reason"], "distribution-owned safe tool class")
+
+    def test_image_preflight_read_requires_generated_handle_shape(self):
+        for payload in ({}, {"handle": "not-a-handle"}, {"handle": "../image-preflight-00000000-0000-0000-0000-000000000000"}):
+            with self.subTest(payload=payload):
+                with self.assertRaisesRegex(guard.StronkPiError, "valid image preflight handle"):
+                    guard.guarded_tool_decision("image_preflight_read", payload, ROOT, {})
 
     def test_stale_search_compatibility_tools_are_not_safe_allowlisted(self):
         for tool in ("get_search_content", "stronk_fetch_content"):

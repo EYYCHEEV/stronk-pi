@@ -161,6 +161,7 @@ EXPECTED_ARTIFACT_IDENTITIES = {
     },
 }
 PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
+IMAGE_PREFLIGHT_HANDLE_RE = re.compile(r"^image-preflight-[0-9A-Fa-f-]{36}$")
 ENV_NAMES = (
     "DEEPSEEK_API_KEY",
     "MOONSHOT_API_KEY",
@@ -170,7 +171,7 @@ ENV_NAMES = (
 )
 READ_ONLY_TOOLS = {"read", "grep", "find", "ls", "glob", "todoread"}
 WEB_TOOLS = {"web_search", "code_search", "fetch_content"}
-IMAGE_TOOLS = {"image_read"}
+IMAGE_TOOLS = {"image_read", "image_preflight_read"}
 SESSION_TOOLS = {"todowrite", "todoread", "question", "ask_user"}
 MUTATING_TOOLS = {"bash", "write", "edit", "patch", "apply_patch", "multi_edit", "user_bash"}
 CODEX_HOOK_EVENTS = {
@@ -555,8 +556,19 @@ def validate_mutation_target(tool: str, payload: dict[str, Any], cwd: Path) -> t
     return target, f"{tool} target stays under cwd"
 
 
+def validate_image_tool(tool: str, payload: dict[str, Any]) -> tuple[bool, str]:
+    if tool == "image_preflight_read":
+        handle = payload.get("handle")
+        if not isinstance(handle, str) or not IMAGE_PREFLIGHT_HANDLE_RE.fullmatch(handle.strip()):
+            raise StronkPiError("image_preflight_read requires a valid image preflight handle")
+    return True, "distribution-owned safe tool class"
+
+
 def guarded_tool_decision(tool: str, payload: dict[str, Any], cwd: Path, context: dict[str, Any]) -> dict[str, Any]:
-    if tool in {"mcp", "stronk_subagent"} | WEB_TOOLS | IMAGE_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
+    if tool in IMAGE_TOOLS:
+        allowed, reason = validate_image_tool(tool, payload)
+        return {"allow": allowed, "reason": reason, "input": payload}
+    if tool in {"mcp", "stronk_subagent"} | WEB_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
         return {"allow": True, "reason": "distribution-owned safe tool class", "input": payload}
     if tool == "subagent":
         return {"allow": False, "reason": "raw subagent tool denied; use stronk_subagent", "input": payload}

@@ -21,7 +21,8 @@ enabled = true
 model = "kimi-coding/kimi-for-coding:xhigh"
 max_images = 12
 max_bytes = 5242880
-timeout_ms = 90000
+timeout_ms = 360000
+stream_idle_timeout_ms = 60000
 max_output_tokens = 4096
 failure_mode = "soft"
 

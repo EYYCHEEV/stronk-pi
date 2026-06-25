@@ -73,6 +73,20 @@ uncertainties, and scoped negative evidence where the vision model provides
 them.
 The prompt explicitly tells the downstream model not to treat omitted,
 unknown, unreadable, cropped, or not-visible details as absent.
+For prompt-time preflight, `[image_preflight].max_output_tokens` is treated as
+a per-image response budget; multi-image requests scale the provider budget
+within Stronk Pi's hard cap.
+The provider call remains one multi-image request; only the saved readback
+artifacts are split into three-image groups.
+The inline prompt block stays bounded.
+When session metadata is available, the plugin saves extended bounded
+sanitized analysis text under the private session state.
+The model-facing inline block stays compact: image labels, safe filenames,
+MIME/size hints, and opaque `image_preflight_read` handles grouped at up to
+three images per handle.
+Text-only models must read the relevant artifact group before making visual
+claims.
+That artifact contains text evidence only, not raw image data or base64.
 Prompt-time preflight does not recursively inspect folders or tool-discovered
 paths after the turn starts.
 Agentic image reading is handled by the registered `image_read` plugin tool.
