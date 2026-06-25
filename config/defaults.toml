@@ -33,7 +33,7 @@ templates_dir = "~/.stronk-pi/config/role-templates"
 generated_agents_dir = "~/.stronk-pi/agent/agents"
 
 [package_pins]
-mcp_adapter = { name = "pi-mcp-adapter", version = "2.5.3" }
+mcp_adapter = { name = "pi-mcp-adapter", version = "2.9.0" }
 subagents = { name = "pi-subagents", version = "0.22.0" }
 intercom = { name = "pi-intercom", version = "0.6.0" }
 jiti = { name = "jiti", version = "2.7.0" }

@@ -56,9 +56,16 @@ STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --mcp-registry ~/.config/mcp/reg
 
 The MCP registry check validates registry TOML, server command availability,
 selected tool names, selected server environment variables, unsafe URLs,
-floating package refs, and accidental personal absolute paths. Runtime MCP
-loading is not enabled until the guarded launcher includes a verified MCP
-adapter artifact.
+floating package refs, and accidental personal absolute paths.
+At launch, `stronkpi` enables `pi-mcp-adapter` when `.mcp-tools` selects at
+least one server and the pinned adapter package is installed.
+It writes `~/.stronk-pi/agent/mcp.json` from the selected registry entries and
+passes that file through `--mcp-config`, so MCP servers stay lazy and only
+connect when used.
+
+Do not add project `.mcp.json` or `.pi/mcp.json` files for Stronk Pi sessions.
+Those files are rejected because the upstream adapter would merge them outside
+the `.mcp-tools` boundary.
 
 ## Local Role Overlay
 

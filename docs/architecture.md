@@ -127,10 +127,20 @@ checks registry TOML, server command availability, selected `.mcp-tools`
 entries, selected server environment variables, unsafe URLs, floating package
 refs, and accidental personal paths.
 
-`stronkpi` does not currently load a runtime MCP adapter. The setup repo owns
-the registry and `.mcp-tools` validation boundary; runtime MCP loading remains
-deferred until a verified MCP adapter artifact is included in the launch
-extension set.
+`stronkpi` loads `pi-mcp-adapter` when `.mcp-tools` selects at least one MCP
+server and the pinned adapter package is installed under the Stronk Pi state
+root.
+Before launch, the harness validates the registry, writes
+`~/.stronk-pi/agent/mcp.json` with only the selected servers, and passes that
+file through the adapter-owned `--mcp-config` flag.
+The adapter keeps MCP servers lazy: servers connect when their tools are used,
+not when Pi starts.
+
+Project-level `.mcp.json` and `.pi/mcp.json` files are rejected during Stronk
+Pi launch because upstream `pi-mcp-adapter` merges them after the configured
+Pi global file.
+Operators must keep server definitions in the registry and use `.mcp-tools`
+for the selected-server boundary.
 
 ## Manifest Flow
 
