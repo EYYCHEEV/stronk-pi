@@ -13,6 +13,9 @@ id_ed25519
 
 # Stronk Pi runtime state must stay user-local.
 .stronk-pi/
+.codex/
+.gemini/
+.mcp-tools
 .pi/agent/auth.json
 .pi/agent/mcp-cache.json
 .pi/agent/mcp-npx-cache.json
@@ -23,4 +26,3 @@ id_ed25519
 .pytest_cache/
 .coverage
 tmp/
-
