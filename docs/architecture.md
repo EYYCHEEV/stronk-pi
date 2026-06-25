@@ -92,8 +92,9 @@ paths after the turn starts.
 Agentic image reading is handled by the registered `image_read` plugin tool.
 That tool is for text-only models that discover local image files after the
 prompt starts.
-It accepts explicit image `paths` plus one optional bounded `directory` scan,
-keeps `recursive = false` unless explicitly requested, and reuses the same
+It accepts one explicit image path in `paths`, or one bounded `directory` scan
+that must resolve exactly one image.
+It keeps `recursive = false` unless explicitly requested and reuses the same
 configured vision preflight model route and evidence renderer as prompt-time
 preflight.
 The tool output is structured text only; raw image payloads and unnecessary

@@ -169,8 +169,8 @@ If the agent later discovers image files through shell or file tools, that
 uses the registered `image_read` tool instead.
 `image_read` is for text-only models that need visual evidence from local image
 files found after the prompt starts.
-It accepts explicit `paths`, one optional `directory`, `recursive = false` by
-default, and an optional `max_images` bounded by `[image_preflight].max_images`.
+It accepts one explicit image path in `paths`, or one bounded `directory` scan
+that must resolve exactly one image, with `recursive = false` by default.
 Directory scans are deterministic and bounded; hidden and protected directories
 are skipped, and recursive traversal is opt-in.
 The tool routes supported images through the same configured vision preflight
@@ -192,6 +192,7 @@ Environment overrides are available for emergency local sessions:
 `STRONK_PI_IMAGE_PREFLIGHT_MAX_IMAGES`,
 `STRONK_PI_IMAGE_PREFLIGHT_MAX_BYTES`,
 `STRONK_PI_IMAGE_PREFLIGHT_TIMEOUT_MS`,
+`STRONK_PI_IMAGE_PREFLIGHT_STREAM_IDLE_TIMEOUT_MS`,
 `STRONK_PI_IMAGE_PREFLIGHT_MAX_OUTPUT_TOKENS`, and
 `STRONK_PI_IMAGE_PREFLIGHT_FAILURE_MODE`.
 The output-token budget defaults to 4096 and is clamped from 1024 to 8192.

@@ -154,8 +154,8 @@ Images discovered later by agent tool use can be inspected through the
 registered `image_read` tool.
 `image_read` is intended for text-only models that find local image files after
 the prompt starts.
-It accepts explicit `paths` and one optional bounded `directory` scan, with
-`recursive = false` by default.
+It accepts one explicit image path in `paths`, or one bounded `directory` scan
+that must resolve exactly one image, with `recursive = false` by default.
 It uses the same configured vision preflight model route, limits, timeout,
 response token budget, MIME checks, safe failure classification, Image Evidence
 Index, and image-scoped evidence IDs as prompt-time preflight.

@@ -21,8 +21,8 @@ The tool should reuse the same configured image vision preflight model route and
 - Use `image_read` for explicit local image reads discovered during tool use by text-only models.
 - Keep prompt-time preflight behavior unchanged.
 - Implement the first agentic image-reading path as a registered Stronk Pi plugin tool, not a new MCP server.
-- Let `image_read` accept explicit `paths` and one optional bounded `directory` scan with `recursive = false` by default.
-- Reuse the existing image preflight config, provider invocation, MIME checks, byte limits, timeout, max image count, max output tokens, evidence renderer, and safe failure classification where practical.
+- Let `image_read` accept one explicit image path in `paths`, or one bounded `directory` scan that resolves exactly one image with `recursive = false` by default.
+- Reuse the existing image preflight config, provider invocation, MIME checks, byte limits, timeout, output token budget, evidence renderer, and safe failure classification where practical.
 - Return bounded structured text with the same universal evidence style, Image Evidence Index, and image-scoped evidence IDs.
 
 ## Constraints
