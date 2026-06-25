@@ -1,7 +1,7 @@
 # Project Log: Stronk Pi Image Vision Preflight
 Created: 2026-06-22T20:11:01+0800
 Plan: ./PLAN.md
-Workspace: docs/exec-plans/active/stronk-pi-image-vision-preflight/
+Workspace: docs/exec-plans/completed/stronk-pi-image-vision-preflight/
 
 ## Progress
 
@@ -29,6 +29,15 @@ Workspace: docs/exec-plans/active/stronk-pi-image-vision-preflight/
 - [x] Update public docs to distinguish prompt-time preflight from explicit agentic image reading.
 - [x] Run source, distribution, launcher, smoke, path-scan, and diff validation for the follow-up.
 - [x] Record final review, risks, runtime-refresh status, and operator decision in this ExecPlan log.
+- [x] Lock the prompt-time preflight extended-analysis artifact design after session truncation feedback.
+- [x] Implement session-scoped extended sanitized prompt-time preflight artifacts and the `image_preflight_read` text-artifact tool.
+- [x] Scale prompt-time vision request output tokens by prompt image count while preserving the configured per-image budget clamp.
+- [x] Add focused tests for artifact handles, redaction, extended-context preservation, registered tool surface, and provider payload budgeting.
+- [x] Refine artifact-backed prompt-time inline context into a compact bounded artifact index that tells text-only models to call `image_preflight_read`.
+- [x] Split saved prompt-time preflight artifacts into three-image `image_preflight_read` handle groups while preserving one multi-image vision provider request.
+- [x] Run full source, distribution, path-scan, and diff validation for the prompt-time artifact follow-up.
+- [x] Run read-only Stronk swarm verification for the prompt-time artifact follow-up.
+- [x] Record final prompt-time artifact review, risks, runtime-refresh status, and operator decision in this ExecPlan log.
 
 ## Session History
 
@@ -104,6 +113,9 @@ Locked the design to a neutral registered plugin tool named `image_read` with UI
 The tool is for text-only model workflows where image files are discovered after the prompt starts, and it must reuse the existing configured image vision preflight model route, limits, renderer, and safe failure handling.
 The first implementation path is a plugin tool rather than a new MCP server.
 
+[2026-06-26] Reconciled and closed the image vision preflight ExecPlan after the final static provider-header hardening pass.
+All top-level progress items are complete; the workspace moved from active to completed with the remaining live-provider smoke caveat recorded below.
+
 ## Decisions
 
 [2026-06-22] Decision: Use a dedicated ExecPlan workspace instead of folding this into `stronk-pi-swarm-parity` because image preflight has separate runtime behavior, provider-routing risk, tests, and rollout concerns.
@@ -138,6 +150,9 @@ Superseded on 2026-06-25 by the registered `image_read` plugin tool path rather 
 [2026-06-25] Decision: Name the explicit tool `image_read` with label `Image Read` because the model-facing surface should be neutral while the description explains it is intended for text-only model image inspection.
 
 [2026-06-25] Decision: Route `image_read` through the same configured vision preflight model path as prompt-time preflight because this avoids a second vision stack and preserves the universal Image Evidence Index contract.
+
+[2026-06-26] Decision: Close the image vision preflight ExecPlan because prompt-time preflight, `image_read`, artifact readback, provider-substitution static hardening, runtime-refresh records, and validation evidence are complete.
+Future replacement vision providers still require API-keyed smoke tests as separate rollout work.
 
 ## Blockers
 
@@ -238,6 +253,9 @@ Refresh backups:
   Previous package directory: `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package.previous.20260624-232723`.
   Validation passed with installed artifact smoke, installed source scan for Image Evidence Index and metadata path stripping, source and installed `stronkpi --validate-only`, default alias validation, GLM alias validation, `bin/stronkpi --diagnose --json`, and a direct installed plugin probe showing request text and request metadata no longer contain the temporary image path.
   Rollback path: restore the artifact backup into `~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0`, or swap `package.previous.20260624-232723` back to `package`, then rerun `stronkpi --validate-only`, default alias validation, GLM alias validation, and installed artifact smoke.
+
+- Static provider-substitution hardening on 2026-06-26 now forwards provider/model static headers for OpenAI-compatible vision providers.
+  Validation passed with plugin syntax checks, focused configured-provider tests, the full image-related test slice, full `npm run check`, and `git diff --check`; no live replacement-provider smoke ran because no replacement vision API key was available.
 
 ## Review Checkpoints
 
