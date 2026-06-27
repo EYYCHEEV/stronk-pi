@@ -1,0 +1,93 @@
+{
+  "bundle": {
+    "changed": [],
+    "compatibilityVersion": "stronkpi-setup-v1",
+    "configSchemaVersion": 1
+  },
+  "harness": {
+    "exists": true,
+    "source": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/bin/stronkpi"
+  },
+  "mcpAdapter": {
+    "adapterInstalled": true,
+    "adapterPath": "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-mcp-adapter",
+    "configPath": "/Users/eyy/.stronk-pi/agent/mcp.json",
+    "configured": true,
+    "enabled": true,
+    "packageName": "pi-mcp-adapter",
+    "packageVersion": "2.9.0",
+    "projectConfigFiles": [],
+    "registryPath": "/Users/eyy/.config/mcp/registry.toml",
+    "selectedTools": [
+      "context7",
+      "deepwiki"
+    ],
+    "toolsPath": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/.mcp-tools"
+  },
+  "ok": true,
+  "pluginArtifact": {
+    "expectedPath": "/Users/eyy/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs",
+    "installed": true
+  },
+  "roleConfig": {
+    "generatedAgentCount": 28,
+    "generatedAgentsDir": "/Users/eyy/.stronk-pi/agent/agents",
+    "localManifest": "/Users/eyy/.stronk-pi/config/roles.local.toml",
+    "localManifestExists": false,
+    "manifest": "/Users/eyy/.stronk-pi/config/roles.toml",
+    "manifestExists": true,
+    "templateCount": 28,
+    "templatesDir": "/Users/eyy/.stronk-pi/config/role-templates"
+  },
+  "runtime": {
+    "piBinary": "/Users/eyy/.stronk-pi/pi-fork-runtime/node_modules/.bin/pi",
+    "piBinaryExists": true,
+    "trustPin": "/Users/eyy/.stronk-pi/pi-fork-trust.json",
+    "trustPinExists": true
+  },
+  "setupRoot": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi",
+  "skillRoots": [
+    {
+      "path": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/.agents/skills",
+      "scope": "repo"
+    },
+    {
+      "path": "/Users/eyy/Documents/Work/Dev/repos/agentic-workstation/agents-tools/.agents/skills",
+      "scope": "user"
+    }
+  ],
+  "stateRoot": "/Users/eyy/.stronk-pi",
+  "subagentRuntime": {
+    "adapter": "intercom",
+    "configured": true,
+    "enabled": true,
+    "extensionPaths": [
+      "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-subagents",
+      "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-intercom"
+    ],
+    "facade": "stronk",
+    "intercomBridgeChanged": false,
+    "intercomBridgeLinked": true,
+    "intercomBridgePath": "/Users/eyy/.stronk-pi/home/.pi/agent/extensions/pi-intercom",
+    "intercomBridgeTarget": "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-intercom",
+    "missingPackages": [],
+    "packages": {
+      "intercom": {
+        "installed": true,
+        "key": "<redacted>",
+        "packageName": "pi-intercom",
+        "packagePath": "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-intercom",
+        "packageVersion": "0.6.0"
+      },
+      "subagents": {
+        "installed": true,
+        "key": "<redacted>",
+        "packageName": "pi-subagents",
+        "packagePath": "/Users/eyy/.stronk-pi/agent/npm/node_modules/pi-subagents",
+        "packageVersion": "0.22.0"
+      }
+    }
+  },
+  "version": "0.1.0",
+  "warnings": []
+}

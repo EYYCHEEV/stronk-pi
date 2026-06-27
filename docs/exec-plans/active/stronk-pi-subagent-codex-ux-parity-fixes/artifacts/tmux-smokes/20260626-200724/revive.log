@@ -1,0 +1,22 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All steps complete. Both terminal children closed (`cleanupVerified: true`). Final answer:
+
+**Smoke test results:**
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Spawn source | `sp-child-0b235f50` running |
+| 2 | Wait source | Terminal: `REVIVE_SOURCE_DONE=true` |
+| 3 | Revive | New `sp-child-2b0a83da`, `previousChildId` linked |
+| 4 | Verify revive | `previousChildId` matches source, new child id, role=executor, running |
+| 5 | Wait revived | Terminal with all three tokens |
+| 6 | Confirm preview | All lines present in summary |
+| 7 | Close both | `cleanupVerified: true` for both |
+
+```
+STATUS_TOKEN=STRONK_PI_REVIVE_OK
+PREVIOUS_CHILD_LINKED=true
+MODEL_INHERITED=true
+```
+STRONK_PI_SMOKE_EXIT=0

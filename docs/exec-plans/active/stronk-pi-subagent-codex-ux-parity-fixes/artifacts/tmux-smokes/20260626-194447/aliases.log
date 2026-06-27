@@ -1,0 +1,17 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All background notifications now fully received and consistent with prior validation. Alias smoke test: **PASS**.
+
+```
+STATUS_TOKEN=STRONK_PI_ALIAS_OK
+ALIAS_CASE=docs-scout roleRequested=docs-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=structure-scout roleRequested=structure-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=source-scout roleRequested=source-scout roleUsed=technical-researcher aliasResolved=true
+recommendedNextAction=close_child
+```
+STRONK_PI_SMOKE_EXIT=0
+STATUS_TOKEN=STRONK_PI_ALIAS_OK
+ALIAS_LEDGER=/Users/eyy/.stronk-pi/projects/7032ab83a0003dbf/facade-runs/facade-1782474288178-c5b41257/children.json
+ALIAS_CASE=docs-scout roleRequested=docs-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=structure-scout roleRequested=structure-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=source-scout roleRequested=source-scout roleUsed=technical-researcher aliasResolved=true

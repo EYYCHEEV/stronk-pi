@@ -1,0 +1,22 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+## `$repos` Skill Smoke Test — Complete
+
+| Field | Value |
+|---|---|
+| **Child ID** | `sp-child-a89d4f5f-3737-4011-ad9a-432a13ce7f73` |
+| **Role** | `technical-researcher` (requested and used) |
+| **Status** | `completed` |
+| **Terminal result** | `completed` |
+| **Timed out** | `false` |
+| **Cleanup state** | `already_closed` |
+| **Cleanup verified** | `true` |
+| **recommendedNextAction** | `close_child` |
+| **childOutputPreview contains STATUS_TOKEN** | ✅ Yes — `STATUS_TOKEN=STRONK_PI_REPOS_SKILL_OK` confirmed in output |
+
+The child launched a real worker (pid 47061), ran to completion, and returned the expected three-line report. No mocked worker or skipped execution.
+
+```
+STATUS_TOKEN=STRONK_PI_REPOS_SKILL_OK
+```
+STRONK_PI_SMOKE_EXIT=0

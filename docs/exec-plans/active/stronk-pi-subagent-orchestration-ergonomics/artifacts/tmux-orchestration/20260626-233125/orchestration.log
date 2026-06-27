@@ -1,0 +1,46 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All smoke tests completed and verified. Here is the final output with all required tokens:
+
+```text
+STATUS_TOKEN=STRONK_PI_PUBLIC_PATH_REDACTION_OK
+NO_CWD_IN_PUBLIC_RESULT=true
+DEBUG_ARTIFACT_PATHS_NOT_PUBLIC=true
+STATUS_TOKEN=STRONK_PI_WAIT_ALL_OK
+WAIT_ALL_CHILDREN=3
+WAIT_ALL_TIMEOUT_NONTERMINAL=true
+WAIT_ALL_FAILURE_VISIBLE=true
+STATUS_TOKEN=STRONK_PI_READ_OUTPUT_OK
+OUTPUT_HANDLE_OPAQUE=true
+READ_OUTPUT_CHUNKED=true
+READ_OUTPUT_REDACTED=true
+NO_RAW_OUTPUT_PATH=true
+STATUS_TOKEN=STRONK_PI_BATCH_CLOSE_OK
+CLEANUP_REPORTED_PER_CHILD=true
+CLOSE_FAILURE_NOT_HIDDEN=true
+STATUS_TOKEN=STRONK_PI_NEGATIVE_BATCH_OK
+DUPLICATE_CHILD_DENIED=true
+FOREIGN_CHILD_DENIED=true
+INVALID_OUTPUT_HANDLE_DENIED=true
+STATUS_TOKEN=STRONK_PI_CITATION_OK
+FILE_LINE_RECHECKED_AT_SYNTHESIS=true
+```
+
+### Verification Summary
+
+| Test | Result | Evidence |
+|------|--------|----------|
+| **Spawn 3 executor children** | ✅ | 3 real PIDs, 3 real upstream runs |
+| **wait_all: 3 children in order** | ✅ | Children array in exact request order |
+| **wait_all: B non-terminal timeout** | ✅ | Child B `timedOut: true`, `isTerminal: false` |
+| **wait_all: C failure visible** | ✅ | `FAILED_CHILD_VISIBLE=true` in terminal output |
+| **read_output: opaque handle** | ✅ | `subagent-output-ab850c64-88dd-4c9a-b932-1b108b7351e4` |
+| **read_output: chunked** | ✅ | Offset 0→2000→6000, total 23043 chars, `eof: false` on chunk 1 |
+| **read_output: redacted** | ✅ | `STATUS_TOKEN=<redacted>`, `<redacted-path>`, `password=<redacted>` |
+| **read_output: no raw path** | ✅ | No filesystem path in handle or output |
+| **close_all: per-child cleanup** | ✅ | Each child has `cleanupState`, `cleanupVerified` |
+| **close_all: failure arrays** | ✅ | `failedCloseChildIds`, `cleanupFailedChildIds` present and visible |
+| **Duplicate child denied** | ✅ | `duplicate childId denied` |
+| **Foreign child denied** | ✅ | `child not found or foreign-run denied` |
+| **Invalid handle denied** | ✅ | `outputHandle invalid` |
+STRONK_PI_TMUX_SMOKE_EXIT=0

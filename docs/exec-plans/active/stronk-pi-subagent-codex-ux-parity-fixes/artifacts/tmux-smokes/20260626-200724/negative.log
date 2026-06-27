@@ -1,0 +1,35 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+## Negative Smoke Test Results — `stronk_subagent` executor
+
+### Step-by-step findings
+
+1. **Spawn**: ✅ Real child launched (`pid: 51461`). Not mocked, not skipped. `roleRequested: "executor"`, `roleUsed: "executor"`.
+
+2. **Wait**: Child completed in ~6 seconds. `isTerminal: true`, `status: "completed"`, `terminalResult: "completed"`.
+
+3. **Parent-visible harness fields**:
+   - `status`: `"completed"` — lifecycle status, not a `"failed"` status
+   - `failureReason`: `null`
+   - `errorSummary`: `null`
+   - `timedOut`: `false`
+
+4. **Child's internal output** documents:
+   - `bash: exit 42` → `Command exited with code 42` — a clearly failed tool result (non-zero exit)
+   - Child self-reported: `STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK`
+
+5. **Close**: Successful. `cleanupState: "already_closed"`, `cleanupVerified: true`.
+
+### Assessment
+
+The child correctly executed the task: it ran `exit 42`, got exit code 42, and treated it as a deliberate negative outcome, including `STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK` in its failure summary. However, at the **harness level**, the `stronk_subagent` result reports `status: "completed"` with `failureReason: null` and `errorSummary: null` — the harness does not surface the bash exit code 42 as a parent-visible failure indicator in its structured fields. The failure is only visible in the child's text output, not in the harness `status`/`failureReason`/`errorSummary` fields.
+
+Child output (redacted in preview) confirms `STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK` was included by the child itself, and the bash tool result of exit 42 constitutes a clearly failed tool result visible in the parent output preview.
+
+```
+STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK
+PARENT_VISIBLE_FAILURE=true
+```
+
+**recommendedNextAction**: `close_child` (already executed, cleanup verified)
+STRONK_PI_SMOKE_EXIT=0

@@ -1,0 +1,8 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All three background reports received and consistent. The alias smoke validation is complete and the final output lines stand unchanged.
+STRONK_PI_SMOKE_EXIT=0
+ALIAS_LEDGER=/Users/eyy/.stronk-pi/projects/7032ab83a0003dbf/facade-runs/facade-1782474213180-63495a08/children.json
+ALIAS_CASE=docs-scout roleRequested=docs-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=structure-scout roleRequested=structure-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=source-scout roleRequested=source-scout roleUsed=technical-researcher aliasResolved=true

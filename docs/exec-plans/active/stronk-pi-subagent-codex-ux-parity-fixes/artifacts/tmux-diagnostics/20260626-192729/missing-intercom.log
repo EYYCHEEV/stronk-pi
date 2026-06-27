@@ -1,0 +1,128 @@
+{
+  "bundle": {
+    "changed": [
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/defaults.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/roles.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates/code-reviewer.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates/executor.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates/planner.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates/technical-researcher.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates/vision.toml",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/AGENTS.md",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/models.json",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/settings.json",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/web-search.json",
+      "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/home/.pi/web-search.json",
+      "/private/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents/code-reviewer.md",
+      "/private/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents/executor.md",
+      "/private/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents/planner.md",
+      "/private/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents/technical-researcher.md",
+      "/private/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents/vision.md"
+    ],
+    "compatibilityVersion": "stronkpi-setup-v1",
+    "configSchemaVersion": 1
+  },
+  "harness": {
+    "exists": true,
+    "source": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/bin/stronkpi"
+  },
+  "mcpAdapter": {
+    "adapterInstalled": false,
+    "adapterPath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/npm/node_modules/pi-mcp-adapter",
+    "configPath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/mcp.json",
+    "configured": true,
+    "enabled": false,
+    "packageName": "pi-mcp-adapter",
+    "packageVersion": "2.9.0",
+    "projectConfigFiles": [],
+    "registryPath": "/Users/eyy/.config/mcp/registry.toml",
+    "selectedTools": [
+      "context7",
+      "deepwiki"
+    ],
+    "toolsPath": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/.mcp-tools"
+  },
+  "ok": true,
+  "pluginArtifact": {
+    "expectedPath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs",
+    "installed": false
+  },
+  "roleConfig": {
+    "generatedAgentCount": 5,
+    "generatedAgentsDir": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/agents",
+    "localManifest": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/roles.local.toml",
+    "localManifestExists": false,
+    "manifest": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/roles.toml",
+    "manifestExists": true,
+    "templateCount": 5,
+    "templatesDir": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/config/role-templates"
+  },
+  "runtime": {
+    "piBinary": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/pi-fork-runtime/node_modules/.bin/pi",
+    "piBinaryExists": false,
+    "trustPin": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/pi-fork-trust.json",
+    "trustPinExists": false
+  },
+  "setupRoot": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi",
+  "skillRoots": [
+    {
+      "path": "/Users/eyy/Documents/Work/Dev/repos/stronk-pi/.agents/skills",
+      "scope": "repo"
+    },
+    {
+      "path": "/Users/eyy/Documents/Work/Dev/repos/agentic-workstation/agents-tools/.agents/skills",
+      "scope": "user"
+    }
+  ],
+  "stateRoot": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX",
+  "subagentRuntime": {
+    "adapter": "intercom",
+    "configured": true,
+    "enabled": false,
+    "extensionPaths": [],
+    "facade": "stronk",
+    "intercomBridgeLinked": false,
+    "intercomBridgePath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/home/.pi/agent/extensions/pi-intercom",
+    "intercomBridgeTarget": null,
+    "missingPackages": [
+      {
+        "installed": false,
+        "key": "<redacted>",
+        "packageName": "pi-subagents",
+        "packagePath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/npm/node_modules/pi-subagents",
+        "packageVersion": "0.22.0"
+      },
+      {
+        "installed": false,
+        "key": "<redacted>",
+        "packageName": "pi-intercom",
+        "packagePath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/npm/node_modules/pi-intercom",
+        "packageVersion": "0.6.0"
+      }
+    ],
+    "packages": {
+      "intercom": {
+        "installed": false,
+        "key": "<redacted>",
+        "packageName": "pi-intercom",
+        "packagePath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/npm/node_modules/pi-intercom",
+        "packageVersion": "0.6.0"
+      },
+      "subagents": {
+        "installed": false,
+        "key": "<redacted>",
+        "packageName": "pi-subagents",
+        "packagePath": "/var/folders/8z/4g3dcpbj5w70nhx3b3lnxxk80000gn/T/stronk-pi-missing-intercom.STc4GX/agent/npm/node_modules/pi-subagents",
+        "packageVersion": "0.22.0"
+      }
+    }
+  },
+  "version": "0.1.0",
+  "warnings": [
+    "plugin artifact is not installed; live launch will fail closed until setup update installs it",
+    "trusted Pi runtime is not installed; live launch will fail closed until a trust-pinned runtime is installed",
+    "selected MCP servers are configured but pi-mcp-adapter is not installed; live launch will fail closed",
+    "Stronk Pi subagent intercom runtime packages are missing (pi-subagents@0.22.0, pi-intercom@0.6.0); live launch will fail closed"
+  ]
+}
+DIAG_TOKEN=STRONK_PI_DIAG_MISSING_INTERCOM_OK

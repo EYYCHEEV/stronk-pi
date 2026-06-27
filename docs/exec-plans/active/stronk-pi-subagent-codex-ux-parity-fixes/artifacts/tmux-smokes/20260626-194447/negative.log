@@ -1,0 +1,25 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+## Negative Failure Smoke Test Results
+
+### Step-by-step verification:
+
+**Step 1 - Spawn:** ✅ Real worker launched with pid 92597, role `executor` resolved correctly, no mocked worker or skipped execution.
+
+**Step 2 - Wait:** ✅ Child completed in ~6 seconds, `isTerminal: true`, `status: "completed"`.
+
+**Step 3 - Parent-visible result is not misleading:** The output is not empty (822 bytes). The child output clearly shows `Command exited with code 42` and includes `STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK`. The parent can read this task-level failure from the output content even though the harness metadata uses `status: "completed"` (the subagent agent ran to completion — only the task it performed failed). This is an honest, non-misleading result.
+
+**Step 4 - Failure indicator present:** ✅ The child output includes a **clearly failed tool result**: `Command exited with code 42`. Harness-level fields `status=failed`, `failureReason`, and `errorSummary` are null/absent, but the output content meets the "clearly failed tool result" criterion.
+
+**Step 5 - Close:** ✅ Child closed, `cleanupState: "already_closed"`, `cleanupVerified: true`.
+
+**Step 6 - recommendedNextAction:** `close_child`
+
+---
+
+```
+STATUS_TOKEN=STRONK_PI_NEGATIVE_FAILURE_OK
+PARENT_VISIBLE_FAILURE=true
+```
+STRONK_PI_SMOKE_EXIT=0
