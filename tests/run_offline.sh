@@ -24,6 +24,7 @@ python3 -m py_compile \
   tests/test_release_scripts.py \
   tests/test_guard_matrix.py \
   tests/test_mcp_doctor.py \
+  tests/test_plugin_state_root.py \
   tests/test_public_surface.py
 python3 -m json.tool config/pi/agent/models.json >/dev/null
 python3 -m json.tool config/pi/agent/settings.base.json >/dev/null
@@ -35,6 +36,7 @@ python3 -m unittest \
   tests/test_release_scripts.py \
   tests/test_guard_matrix.py \
   tests/test_mcp_doctor.py \
+  tests/test_plugin_state_root.py \
   tests/test_public_surface.py
 sh tests/test_install_dry_run.sh
 
@@ -76,6 +78,11 @@ bin/stronkpi-setup update --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup run --dry-run
 bin/stronkpi --validate-only >/dev/null
 bin/stronkpi --diagnose --json >/dev/null
+test ! -e "$HOME/.pi"
+test ! -e "$HOME/.config/pi"
+test ! -e "$HOME/.local/share/pi"
+test ! -e "$HOME/.cache/pi"
+test ! -e "$HOME/.stronk-pi/home"
 
 prefix="$tmp/prefix"
 bin/stronkpi-setup install --prefix "$prefix"

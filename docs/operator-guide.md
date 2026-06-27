@@ -9,11 +9,14 @@
 | Refresh managed runtime config | `stronkpi-setup refresh-config` | Updates `~/.stronk-pi/config`, `~/.stronk-pi/agent/settings.json`, and generated role Markdown. |
 | Import local Codex Stronk roles | `stronkpi-setup import-codex-roles` | Copies local role TOML into runtime templates, then regenerates role Markdown. |
 | Verify/update pinned artifacts | `stronkpi-setup update` | Uses manifests; respects `STRONKPI_NO_NETWORK=1`. |
+| Inspect obsolete private home cleanup | `stronkpi-setup cleanup-private-home --dry-run --json` | Plans cleanup for old development installs without deleting data. |
 | Validate guarded harness config | `stronkpi --validate-only` | Checks the harness without launching an interactive Pi session. |
 | Launch the guarded Pi experience | `stronkpi` | Portable harness installed by the Stronk Pi distribution repo. |
 
 Stronk Pi is the guarded Pi Coding Agent distribution. This repo owns setup and
 manifest validation; the `stronkpi` harness owns runtime launch behavior.
+`stronkpi` launches with the operator's real `HOME`.
+All Stronk Pi-owned state lives under `~/.stronk-pi/`.
 
 ## Routine Checks
 
@@ -59,13 +62,40 @@ selected tool names, selected server environment variables, unsafe URLs,
 floating package refs, and accidental personal absolute paths.
 At launch, `stronkpi` enables `pi-mcp-adapter` when `.mcp-tools` selects at
 least one server and the pinned adapter package is installed.
-It writes `~/.stronk-pi/agent/mcp.json` from the selected registry entries and
-passes that file through `--mcp-config`, so MCP servers stay lazy and only
-connect when used.
+It writes project `.mcp.json` from the selected registry entries and passes
+that file through `--mcp-config`, so MCP servers stay lazy and only connect
+when used.
+The generated file is written with mode `0600`.
+The source of truth is the operator MCP registry plus project `.mcp-tools`;
+`.mcp.json` is a refreshed Claude Code-compatible artifact.
 
-Do not add project `.mcp.json` or `.pi/mcp.json` files for Stronk Pi sessions.
-Those files are rejected because the upstream adapter would merge them outside
-the `.mcp-tools` boundary.
+Do not hand-edit project `.mcp.json` for Stronk Pi sessions.
+`stronkpi` refreshes it from `.mcp-tools` and the registry.
+`stronkpi` still rejects project `.pi/mcp.json` because the upstream adapter
+would merge it outside the `.mcp-tools` boundary.
+
+## State Root And Cleanup
+
+Normal launches inherit the operator's real home directory and keep Stronk
+Pi-owned files under `~/.stronk-pi/`.
+Important managed paths are:
+
+- `~/.stronk-pi/config/pi/web-search.json`
+- project `.mcp.json`, generated from `.mcp-tools`
+- `~/.stronk-pi/agent/sessions/`
+- `~/.stronk-pi/agent/extensions/pi-intercom`
+- `~/.stronk-pi/logs/`, `~/.stronk-pi/cache/`, and `~/.stronk-pi/tmp/`
+
+The harness should not create `~/.pi`, `~/.config/pi`, `~/.local/share/pi`, `~/.cache/pi`, or `~/.stronk-pi/home` during normal launch.
+For old development installs, preview obsolete private-home cleanup before
+applying it:
+
+```sh
+STRONKPI_NO_NETWORK=1 stronkpi-setup cleanup-private-home --dry-run --json
+```
+
+Run `--apply` only after the dry-run lists only expected migrated config and
+cache-like deletions.
 
 ## Local Role Overlay
 

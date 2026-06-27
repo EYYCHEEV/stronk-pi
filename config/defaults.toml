@@ -3,9 +3,15 @@ managed_by = "stronk-pi"
 
 [runtime]
 state_root = "~/.stronk-pi"
-private_home = "~/.stronk-pi/home"
 agent_dir = "~/.stronk-pi/agent"
 session_base = "~/.stronk-pi/agent/sessions"
+config_root = "~/.stronk-pi/config"
+cache_root = "~/.stronk-pi/cache"
+log_root = "~/.stronk-pi/logs"
+tmp_root = "~/.stronk-pi/tmp"
+generated_mcp_file = ".mcp.json"
+web_search_config = "~/.stronk-pi/config/pi/web-search.json"
+intercom_bridge = "~/.stronk-pi/agent/extensions/pi-intercom"
 
 [harness]
 subagent_facade = "stronk"

@@ -1,0 +1,20 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All close-result fields confirmed: `closeRequested`, `cleanupState`, `upstreamState`, `processLive`, `cleanupVerified`.
+
+### Lifecycle Smoke Summary
+
+| Step | Result |
+|------|--------|
+| **Spawn** | ✅ Real worker launched (pid 56073), not mocked |
+| **Wait** | ✅ Terminal — all 9 output fields present (`childOutputPreview`, `childOutputTruncated`, `childOutputBytes`, `childOutputHash`, `roleRequested`, `roleUsed`, `aliasResolved`, `isTerminal`, `recommendedNextAction`) |
+| **Close** | ✅ All 5 close fields present (`closeRequested`, `cleanupState`, `upstreamState`, `processLive`, `cleanupVerified`) |
+
+Observed child status: `completed`, cleanup state: `already_closed`
+
+```
+STATUS_TOKEN=STRONK_PI_LIFECYCLE_OK
+TERMINAL_OUTPUT_PREVIEW_SEEN=true
+CLOSED=true
+```
+STRONK_PI_SMOKE_EXIT=0

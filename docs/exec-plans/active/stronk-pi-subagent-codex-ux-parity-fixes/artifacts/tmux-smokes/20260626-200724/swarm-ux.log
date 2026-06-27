@@ -1,0 +1,37 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+All steps complete. Here is the final answer:
+
+---
+
+```
+STATUS_TOKEN=STRONK_PI_SWARM_UX_OK
+READ_ONLY_DENIED_MUTATION=true
+WRITE_SWARM_REPORTS_ROLE_ROUTING=true
+
+--- ROLE ROUTING METADATA (from parent spawn tool result) ---
+roleRequested: executor
+roleUsed: executor
+aliasResolved: false
+--- END ROLE ROUTING METADATA ---
+
+ROLE_ROUTING_REPORT_SOURCE=parent_tool_result
+CLEANUP_REPORTED=true
+```
+
+**Smoke Summary:**
+
+| Step | Action | Child | Result |
+|------|--------|-------|--------|
+| 1 | Spawn | `technical-researcher` | Running |
+| 2 | Wait | `technical-researcher` | `completed` — `READ_ONLY_DENIED_MUTATION=true` ✓ |
+| 3 | Confirm | `technical-researcher` | Token present in `childOutputPreview` ✓ |
+| 4 | Close | `technical-researcher` | `cleanupState=already_closed`, `cleanupVerified=true` ✓ |
+| 5 | Spawn | `executor` | Running — `roleRequested=executor`, `roleUsed=executor`, `aliasResolved=false` from parent tool result |
+| 6 | Wait | `executor` | `completed` — `STATUS_TOKEN=STRONK_PI_SWARM_UX_OK`, `WRITE_SWARM_REPORTS_ROLE_ROUTING=true` ✓ |
+| 7 | Confirm | `executor` | Both tokens confirmed ✓ |
+| 8 | Role routing | `executor` | Source: parent spawn result ✓ |
+| 9 | Close | `executor` | `cleanupState=already_closed`, `cleanupVerified=true` ✓ |
+
+No mocked workers, no skipped child execution. Both children ran real upstream subagent processes and completed.
+STRONK_PI_SMOKE_EXIT=0

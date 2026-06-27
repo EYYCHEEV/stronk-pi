@@ -12,7 +12,10 @@ mode = "portable-runtime"
 enabled_roles = "all-public-stronk"
 read_tools = ["read", "grep", "find", "ls"]
 write_tools = ["read", "grep", "find", "ls", "bash", "write", "edit"]
-extensions = ["~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs"]
+extensions = [
+  "~/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs",
+  "pi-intercom",
+]
 write_roles = [
   "executor",
 ]

@@ -1,0 +1,15 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+Smoke test complete. All three aliases (`docs-scout`, `structure-scout`, `source-scout`) resolved to `technical-researcher` with real child runs, correct tokens, and verified cleanup. Final validation lines repeated for completeness:
+
+```
+STATUS_TOKEN=STRONK_PI_ALIAS_OK
+ALIAS_CASE=docs-scout roleRequested=docs-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=structure-scout roleRequested=structure-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=source-scout roleRequested=source-scout roleUsed=technical-researcher aliasResolved=true
+```
+STRONK_PI_SMOKE_EXIT=0
+ALIAS_LEDGER=/Users/eyy/.stronk-pi/projects/7032ab83a0003dbf/facade-runs/facade-1782474056740-79fab703/children.json
+ALIAS_CASE=docs-scout roleRequested=docs-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=structure-scout roleRequested=structure-scout roleUsed=technical-researcher aliasResolved=true
+ALIAS_CASE=source-scout roleRequested=source-scout roleUsed=technical-researcher aliasResolved=true

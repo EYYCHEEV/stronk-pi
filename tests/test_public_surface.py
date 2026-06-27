@@ -24,6 +24,10 @@ PUBLIC_PATHS = [
     ROOT / ".github",
 ]
 
+PUBLIC_EXCLUDED_PREFIXES = [
+    "docs/exec-plans/active/",
+]
+
 FORBIDDEN_SIMPLE = [
     "agentic-workstation",
     "STRONK_PI_PLUGIN_REPO",
@@ -72,6 +76,31 @@ CONSTRUCTED_PRIVATE_PATH_PATTERNS = [
     re.compile(r"['\"]/home/['\"]\s*\+"),
 ]
 
+PRIVATE_HOME_MIGRATION_MARKERS = [
+    "~/.stronk-pi/home",
+    ".stronk-pi/home",
+    "STRONK_PI_PRIVATE_HOME",
+    "home/.pi",
+    "root / \"home\"",
+    "private_home",
+]
+
+PRIVATE_HOME_ALLOWED_PATTERNS = {
+    "lib/stronk-pi-guard.py": [
+        re.compile(r"real_home_write_risks"),
+        re.compile(r"\+ \[str\(root / \"home\"\)\]"),
+        re.compile(r"private_home_cleanup"),
+        re.compile(r"private_home_cache_like_path"),
+        re.compile(r"plan_private_home_cleanup"),
+        re.compile(r"apply_private_home_cleanup"),
+        re.compile(r"cleanup_private_home"),
+        re.compile(r"obsolete private home"),
+        re.compile(r"obsolete_home = root / \"home\""),
+        re.compile(r"not \(root / \"home\"\)\.exists\(\)"),
+        re.compile(r"cleanup-private-home"),
+    ],
+}
+
 
 def public_files() -> list[Path]:
     files: list[Path] = []
@@ -83,7 +112,10 @@ def public_files() -> list[Path]:
                 item for item in path.rglob("*")
                 if item.is_file() and "__pycache__" not in item.parts
             )
-    return sorted(set(files))
+    return sorted(
+        path for path in set(files)
+        if not any(path.relative_to(ROOT).as_posix().startswith(prefix) for prefix in PUBLIC_EXCLUDED_PREFIXES)
+    )
 
 
 class PublicSurfaceTests(unittest.TestCase):
@@ -119,6 +151,31 @@ class PublicSurfaceTests(unittest.TestCase):
             for pattern in CONSTRUCTED_PRIVATE_PATH_PATTERNS:
                 if pattern.search(text):
                     offenders.append(f"{rel}: {pattern.pattern}")
+        self.assertEqual(offenders, [])
+
+    def test_no_default_runtime_private_home_markers(self):
+        offenders: list[str] = []
+        for path in public_files():
+            rel = path.relative_to(ROOT).as_posix()
+            allowed = PRIVATE_HOME_ALLOWED_PATTERNS.get(rel, [])
+            for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
+                if not any(marker in line for marker in PRIVATE_HOME_MIGRATION_MARKERS):
+                    continue
+                if any(pattern.search(line) for pattern in allowed):
+                    continue
+                if "legacy" in line.lower() or "obsolete private home" in line.lower():
+                    continue
+                if rel.endswith(".md") and any(
+                    phrase in line.lower()
+                    for phrase in (
+                        "old development",
+                        "must not create",
+                        "does not create",
+                        "should not create",
+                    )
+                ):
+                    continue
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
         self.assertEqual(offenders, [])
 
     def test_no_tracked_generated_role_markdown(self):

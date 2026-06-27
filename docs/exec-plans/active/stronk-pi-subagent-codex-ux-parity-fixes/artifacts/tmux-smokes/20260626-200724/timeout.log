@@ -1,0 +1,21 @@
+Warning: No models match pattern "neuralwatt/glm-5.2"
+Warning: No models match pattern "neuralwatt/glm-5.2-short"
+Timeout recovery smoke test complete. All steps validated:
+
+```
+STATUS_TOKEN=STRONK_PI_TIMEOUT_RECOVERY_OK
+timedOut=true
+recommendedNextAction=wait_again
+```
+
+**Result summary:**
+
+| Step | Check | Value |
+|------|-------|-------|
+| 1. Spawn | `executor` role spawned | `sp-child-a4d7c61a-...`, status `running` |
+| 2. Short wait (1s) | `timedOut=true`, non-terminal | `elapsedMs=1002`, `timeoutMs=1000` |
+| 3. `recommendedNextAction` | Non-empty | `wait_again` |
+| 4. Full wait (3600s) | Child completed | `terminalResult=completed` |
+| 5. Token present | Output contains expected token | `STATUS_TOKEN=STRONK_PI_TIMEOUT_RECOVERY_OK` |
+| 6. Close | Cleanup verified | `cleanupState=already_closed`, `cleanupVerified=true` |
+STRONK_PI_SMOKE_EXIT=0

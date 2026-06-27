@@ -11,6 +11,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -192,6 +193,9 @@ class ManifestVerifierTests(unittest.TestCase):
         old_state_root = os.environ.get("STRONKPI_STATE_ROOT")
         old_guard = os.environ.get("STRONK_PI_GUARD")
         old_code_hook = os.environ.get("STRONK_PI_CODEX_HOOK_COMMAND_JSON")
+        old_private_home = os.environ.get("STRONK_PI_PRIVATE_HOME")
+        old_pi_agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
+        old_fake = os.environ.get("STRONKPI_FAKE_OVERRIDE")
         old_dev = os.environ.get("STRONK_PI_DEV_OVERRIDES")
         try:
             os.environ["STRONK_PI_GUARD"] = "/tmp/fake-guard"
@@ -210,6 +214,18 @@ class ManifestVerifierTests(unittest.TestCase):
             os.environ["STRONKPI_STATE_ROOT"] = "/tmp/fake-state"
             with self.assertRaisesRegex(guard.StronkPiError, "STRONKPI_STATE_ROOT"):
                 guard.validate_harness_control_env()
+            os.environ.pop("STRONKPI_STATE_ROOT", None)
+            os.environ["STRONK_PI_PRIVATE_HOME"] = "/tmp/private-home"
+            with self.assertRaisesRegex(guard.StronkPiError, "STRONK_PI_PRIVATE_HOME"):
+                guard.validate_harness_control_env()
+            os.environ.pop("STRONK_PI_PRIVATE_HOME", None)
+            os.environ["PI_CODING_AGENT_DIR"] = "/tmp/fake-agent"
+            with self.assertRaisesRegex(guard.StronkPiError, "PI_CODING_AGENT_DIR"):
+                guard.validate_harness_control_env()
+            os.environ.pop("PI_CODING_AGENT_DIR", None)
+            os.environ["STRONKPI_FAKE_OVERRIDE"] = "1"
+            with self.assertRaisesRegex(guard.StronkPiError, "STRONKPI_FAKE_OVERRIDE"):
+                guard.validate_harness_control_env()
         finally:
             if old_setup_root is None:
                 os.environ.pop("STRONKPI_SETUP_ROOT", None)
@@ -227,6 +243,18 @@ class ManifestVerifierTests(unittest.TestCase):
                 os.environ.pop("STRONK_PI_CODEX_HOOK_COMMAND_JSON", None)
             else:
                 os.environ["STRONK_PI_CODEX_HOOK_COMMAND_JSON"] = old_code_hook
+            if old_private_home is None:
+                os.environ.pop("STRONK_PI_PRIVATE_HOME", None)
+            else:
+                os.environ["STRONK_PI_PRIVATE_HOME"] = old_private_home
+            if old_pi_agent_dir is None:
+                os.environ.pop("PI_CODING_AGENT_DIR", None)
+            else:
+                os.environ["PI_CODING_AGENT_DIR"] = old_pi_agent_dir
+            if old_fake is None:
+                os.environ.pop("STRONKPI_FAKE_OVERRIDE", None)
+            else:
+                os.environ["STRONKPI_FAKE_OVERRIDE"] = old_fake
             if old_dev is None:
                 os.environ.pop("STRONK_PI_DEV_OVERRIDES", None)
             else:
@@ -270,14 +298,50 @@ class ManifestVerifierTests(unittest.TestCase):
 
     def test_harness_environment_installs_setup_guard_helper(self):
         with tempfile.TemporaryDirectory() as tmp_name:
-            root = Path(tmp_name) / "state"
-            env = guard.harness_environment(root)
+            tmp = Path(tmp_name)
+            root = tmp / "state"
+            home = tmp / "operator-home"
+            xdg_config = tmp / "xdg-config"
+            xdg_cache = tmp / "xdg-cache"
+            fake_bin = tmp / "fake-bin"
+            fake_bin.mkdir()
+            (fake_bin / "python3").write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+            (fake_bin / "python3").chmod(0o755)
+            home.mkdir()
+            xdg_config.mkdir()
+            xdg_cache.mkdir()
+
+            with patch.dict(
+                os.environ,
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(xdg_config),
+                    "XDG_CACHE_HOME": str(xdg_cache),
+                    "PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", ""),
+                },
+                clear=False,
+            ):
+                env = guard.harness_environment(root)
 
             self.assertEqual(env["STRONK_PI_GUARD"], str(GUARD_PATH))
             self.assertEqual(env["STRONK_PI_SEARCH_PROVIDER"], "exa")
             self.assertEqual(env["STRONK_PI_SUBAGENT_FACADE"], "stronk")
             self.assertEqual(env["STRONK_PI_SUBAGENT_ADAPTER"], "intercom")
-            self.assertEqual(json.loads(env["STRONK_PI_CODEX_HOOK_COMMAND_JSON"]), ["python3", str(GUARD_PATH), "codex-hook"])
+            self.assertEqual(env["HOME"], str(home.resolve()))
+            self.assertEqual(env["XDG_CONFIG_HOME"], str(xdg_config))
+            self.assertEqual(env["XDG_CACHE_HOME"], str(xdg_cache))
+            self.assertEqual(env["STRONK_PI_CONFIG_ROOT"], str(root / "config"))
+            self.assertEqual(env["STRONK_PI_LOG_ROOT"], str(root / "logs"))
+            self.assertEqual(env["STRONK_PI_CACHE_ROOT"], str(root / "cache"))
+            self.assertEqual(env["STRONK_PI_TMP_ROOT"], str(root / "tmp"))
+            self.assertEqual(env["PI_CODING_AGENT_DIR"], str(root / "agent"))
+            self.assertEqual(env["PI_CODING_AGENT_SESSION_DIR"], str(root / "agent" / "sessions"))
+            self.assertEqual(env["STRONK_PI_WEB_SEARCH_CONFIG"], str(root / "config" / "pi" / "web-search.json"))
+            self.assertEqual(env["STRONK_PI_INTERCOM_BRIDGE"], str(root / "agent" / "extensions" / "pi-intercom"))
+            self.assertFalse((root / "home").exists())
+            code_hook = json.loads(env["STRONK_PI_CODEX_HOOK_COMMAND_JSON"])
+            self.assertEqual(code_hook, [str(Path(sys.executable).resolve(strict=False)), str(GUARD_PATH), "codex-hook"])
+            self.assertNotEqual(code_hook[0], str(fake_bin / "python3"))
             payload = {
                 "session_id": "session-1",
                 "turn_id": "turn-1",
@@ -302,6 +366,55 @@ class ManifestVerifierTests(unittest.TestCase):
             parsed = json.loads(proc.stdout)
             self.assertIs(parsed["continue"], True)
             self.assertEqual(parsed["hookSpecificOutput"]["hookEventName"], "UserPromptSubmit")
+
+    def test_harness_environment_exports_controlled_skill_roots(self):
+        old_home = os.environ.get("HOME")
+        old_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            home = tmp / "home"
+            project = tmp / "project"
+            state = tmp / "state"
+            user_skills = home / ".agents" / "skills"
+            repo_skills = project / ".agents" / "skills"
+            (user_skills / "user-skill").mkdir(parents=True)
+            (repo_skills / "repo-skill").mkdir(parents=True)
+            (user_skills / "user-skill" / "SKILL.md").write_text("# user\n", encoding="utf-8")
+            (repo_skills / "repo-skill" / "SKILL.md").write_text("# repo\n", encoding="utf-8")
+            try:
+                os.environ["HOME"] = str(home)
+                os.chdir(project)
+                env = guard.harness_environment(state)
+            finally:
+                os.chdir(old_cwd)
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
+
+            roots = json.loads(env["STRONK_PI_SKILL_ROOTS"])
+            self.assertEqual(
+                roots,
+                [
+                    {"path": str(repo_skills.resolve()), "scope": "repo"},
+                    {"path": str(user_skills.resolve()), "scope": "user"},
+                ],
+            )
+
+    def test_pi_launch_args_preserve_controlled_skill_roots_after_no_skills(self):
+        launch_args = guard.build_pi_launch_args(
+            plugin_path=Path("/tmp/plugin/src/index.mjs"),
+            session_dir=Path("/tmp/session"),
+            skill_roots=[
+                {"path": "/tmp/project/.agents/skills", "scope": "repo"},
+                {"path": "/tmp/home/.agents/skills", "scope": "user"},
+            ],
+        )
+
+        self.assertLess(launch_args.index("--no-skills"), launch_args.index("--skill"))
+        self.assertIn("/tmp/project/.agents/skills", launch_args)
+        self.assertIn("/tmp/home/.agents/skills", launch_args)
+        self.assertEqual(launch_args.count("--skill"), 2)
 
     def test_harness_environment_uses_runtime_harness_defaults(self):
         with tempfile.TemporaryDirectory() as tmp_name:
@@ -374,24 +487,17 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertIn(str(legacy_target), backup_text)
             self.assertIn(str(Path(tmp_name) / "legacy-AGENTS.md"), backup_text)
 
-    def test_install_bundle_replaces_private_home_web_search_symlink(self):
+    def test_install_bundle_writes_web_search_under_state_config_pi(self):
         with tempfile.TemporaryDirectory() as tmp_name:
             root = Path(tmp_name) / "state"
-            legacy_target = Path(tmp_name) / "legacy-web-search.json"
-            (root / "home" / ".pi").mkdir(parents=True)
-            legacy_target.write_text("{}\n", encoding="utf-8")
-            (root / "home" / ".pi" / "web-search.json").symlink_to(legacy_target)
 
             result = guard.install_bundle_defaults(root=root, dry_run=False)
 
-            target = root / "home" / ".pi" / "web-search.json"
-            self.assertFalse(target.is_symlink())
+            target = root / "config" / "pi" / "web-search.json"
             self.assertTrue(target.is_file())
             self.assertEqual(json.loads(target.read_text(encoding="utf-8")), json.loads((ROOT / "config" / "pi" / "web-search.json").read_text(encoding="utf-8")))
             self.assertIn(str(target), result["changed"])
-            backups = sorted((root / "runtime-backups").glob("*/home-.pi-web-search.json.symlink-target.txt"))
-            self.assertEqual(len(backups), 1)
-            self.assertEqual(backups[0].read_text(encoding="utf-8").strip(), str(legacy_target))
+            self.assertFalse((root / "home").exists())
 
     def test_install_bundle_migrates_legacy_setup_managed_marker(self):
         with tempfile.TemporaryDirectory() as tmp_name:
@@ -406,6 +512,223 @@ class ManifestVerifierTests(unittest.TestCase):
             text = target.read_text(encoding="utf-8")
             self.assertIn('managed_by = "stronk-pi"', text)
             self.assertNotIn('managed_by = "stronk-pi-setup"', text)
+
+    def test_cleanup_private_home_dry_run_preserves_state(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            legacy = root / "home" / ".pi" / "web-search.json"
+            cache_file = root / "home" / ".npm" / "_cacache" / "entry"
+            legacy.parent.mkdir(parents=True)
+            cache_file.parent.mkdir(parents=True)
+            legacy.write_text("{}\n", encoding="utf-8")
+            cache_file.write_text("cache\n", encoding="utf-8")
+
+            plan = guard.cleanup_private_home(root, dry_run=True)
+
+            self.assertTrue(plan["dryRun"])
+            self.assertTrue(legacy.exists())
+            self.assertTrue(cache_file.exists())
+            self.assertIn("migrate", {action["action"] for action in plan["actions"]})
+            self.assertIn("delete", {action["action"] for action in plan["actions"]})
+
+    def test_cleanup_private_home_apply_migrates_known_file_and_removes_cache(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            legacy = root / "home" / ".pi" / "web-search.json"
+            legacy_log = root / "home" / ".agents" / "log" / "blocked-commands.log"
+            legacy_session = root / "home" / ".agents" / "sessions" / "session-1.jsonl"
+            legacy_claude_log = root / "home" / ".claude" / "log" / "blocked-commands.log"
+            cache_file = root / "home" / ".npm" / "_cacache" / "entry"
+            agents_cache_file = root / "home" / ".agents" / "cache" / "entry"
+            codex_tmp_file = root / "home" / ".codex" / "tmp" / "entry"
+            legacy.parent.mkdir(parents=True)
+            legacy_log.parent.mkdir(parents=True)
+            legacy_session.parent.mkdir(parents=True)
+            legacy_claude_log.parent.mkdir(parents=True)
+            cache_file.parent.mkdir(parents=True)
+            agents_cache_file.parent.mkdir(parents=True)
+            codex_tmp_file.parent.mkdir(parents=True)
+            legacy.write_text('{"ok":true}\n', encoding="utf-8")
+            legacy_log.write_text("blocked command log\n", encoding="utf-8")
+            legacy_session.write_text('{"session":true}\n', encoding="utf-8")
+            legacy_claude_log.write_text("claude blocked command log\n", encoding="utf-8")
+            cache_file.write_text("cache\n", encoding="utf-8")
+            agents_cache_file.write_text("cache\n", encoding="utf-8")
+            codex_tmp_file.write_text("tmp\n", encoding="utf-8")
+
+            result = guard.cleanup_private_home(root, dry_run=False)
+
+            target = root / "config" / "pi" / "web-search.json"
+            log_target = root / "logs" / "legacy-private-home" / "agents" / "blocked-commands.log"
+            claude_log_target = root / "logs" / "legacy-private-home" / "claude" / "blocked-commands.log"
+            session_target = root / "agent" / "sessions" / "legacy-private-home" / "agents" / "session-1.jsonl"
+            self.assertFalse((root / "home").exists())
+            self.assertTrue(result["removed"])
+            self.assertEqual(target.read_text(encoding="utf-8"), '{"ok":true}\n')
+            self.assertEqual(log_target.read_text(encoding="utf-8"), "blocked command log\n")
+            self.assertEqual(claude_log_target.read_text(encoding="utf-8"), "claude blocked command log\n")
+            self.assertEqual(session_target.read_text(encoding="utf-8"), '{"session":true}\n')
+
+    def test_cleanup_private_home_refuses_symlink_and_hardlink_escapes(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            symlink = root / "home" / ".npm" / "linked"
+            symlink.parent.mkdir(parents=True)
+            symlink.symlink_to(Path(tmp_name) / "outside")
+            with self.assertRaisesRegex(guard.StronkPiError, "symlink"):
+                guard.cleanup_private_home(root, dry_run=True)
+
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            cache_file = root / "home" / ".npm" / "entry"
+            other = Path(tmp_name) / "other-hardlink"
+            cache_file.parent.mkdir(parents=True)
+            cache_file.write_text("cache\n", encoding="utf-8")
+            os.link(cache_file, other)
+            with self.assertRaisesRegex(guard.StronkPiError, "hardlinks"):
+                guard.cleanup_private_home(root, dry_run=True)
+
+    def test_cleanup_private_home_refuses_unknown_non_cache_file(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            root = Path(tmp_name) / "state"
+            unknown = root / "home" / ".config" / "credentials"
+            unknown.parent.mkdir(parents=True)
+            unknown.write_text("do not delete\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(guard.StronkPiError, "unknown non-cache"):
+                guard.cleanup_private_home(root, dry_run=True)
+
+    def test_cleanup_private_home_command_dry_run_and_apply(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            root = tmp / "state"
+            home = tmp / "operator-home"
+            legacy = root / "home" / ".pi" / "web-search.json"
+            cache_file = root / "home" / ".npm" / "_cacache" / "entry"
+            legacy.parent.mkdir(parents=True)
+            cache_file.parent.mkdir(parents=True)
+            home.mkdir()
+            legacy.write_text('{"provider":"fixture"}\n', encoding="utf-8")
+            cache_file.write_text("cache\n", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home),
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+
+            dry_run = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "bin" / "stronkpi-setup"),
+                    "cleanup-private-home",
+                    "--dry-run",
+                    "--json",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+            dry_payload = json.loads(dry_run.stdout)
+            self.assertTrue(dry_payload["dryRun"])
+            self.assertTrue(dry_payload["exists"])
+            self.assertFalse(dry_payload["removed"])
+            self.assertTrue(legacy.exists())
+            self.assertIn("migrate", {action["action"] for action in dry_payload["actions"]})
+            self.assertIn("delete", {action["action"] for action in dry_payload["actions"]})
+
+            applied = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "bin" / "stronkpi-setup"),
+                    "cleanup-private-home",
+                    "--apply",
+                    "--json",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(applied.returncode, 0, applied.stderr)
+            apply_payload = json.loads(applied.stdout)
+            self.assertFalse(apply_payload["dryRun"])
+            self.assertTrue(apply_payload["removed"])
+            self.assertFalse((root / "home").exists())
+            self.assertEqual(
+                (root / "config" / "pi" / "web-search.json").read_text(encoding="utf-8"),
+                '{"provider":"fixture"}\n',
+            )
+
+    def test_diagnose_does_not_persist_or_print_canary_secrets(self):
+        canary = "sk-stronkpi-canary-value-000000000000"
+
+        def assert_canary_absent(label: str, text: str) -> None:
+            if canary in text:
+                self.fail(f"canary leaked into {label}")
+
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            root = tmp / "state"
+            home = tmp / "operator-home"
+            xdg_config = tmp / "xdg-config"
+            xdg_cache = tmp / "xdg-cache"
+            (home / ".aws").mkdir(parents=True)
+            (home / ".config" / "gh").mkdir(parents=True)
+            (home / ".ssh").mkdir(parents=True)
+            xdg_config.mkdir()
+            xdg_cache.mkdir()
+            (home / ".aws" / "credentials").write_text(canary + "\n", encoding="utf-8")
+            (home / ".config" / "gh" / "hosts.yml").write_text(canary + "\n", encoding="utf-8")
+            (home / ".ssh" / "config").write_text("Host canary\n  IdentityFile " + canary + "\n", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(xdg_config),
+                    "XDG_CACHE_HOME": str(xdg_cache),
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                    "STRONKPI_TEST_CANARY_TOKEN": canary,
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi"), "--diagnose", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 0, "diagnose command failed")
+            assert_canary_absent("diagnose stdout", proc.stdout)
+            assert_canary_absent("diagnose stderr", proc.stderr)
+            json.loads(proc.stdout)
+
+            for directory in (
+                root / "logs",
+                root / "agent" / "sessions",
+                root / "tmp",
+                root / "cache",
+                root / "config",
+            ):
+                if not directory.exists():
+                    continue
+                for path in directory.rglob("*"):
+                    if path.is_file():
+                        assert_canary_absent(
+                            path.relative_to(root).as_posix(),
+                            path.read_text(encoding="utf-8", errors="ignore"),
+                        )
 
     def test_install_bundle_refuses_unmanaged_defaults(self):
         with tempfile.TemporaryDirectory() as tmp_name:
@@ -493,6 +816,9 @@ class ManifestVerifierTests(unittest.TestCase):
             self.assertEqual(settings["defaultThinkingLevel"], "xhigh")
             self.assertIn("kimi-coding/kimi-for-coding:xhigh", settings["enabledModels"])
             defaults = guard.load_toml_document(tmp / "home" / ".stronk-pi" / "config" / "defaults.toml")
+            self.assertNotIn("private_home", defaults["runtime"])
+            self.assertTrue((tmp / "home" / ".stronk-pi" / "config" / "pi" / "web-search.json").is_file())
+            self.assertFalse((tmp / "home" / ".stronk-pi" / "home").exists())
             self.assertEqual(defaults["models"]["vision"], "kimi-coding/kimi-for-coding:xhigh")
             self.assertEqual(defaults["image_preflight"]["enabled"], True)
             self.assertEqual(defaults["image_preflight"]["model"], "kimi-coding/kimi-for-coding:xhigh")

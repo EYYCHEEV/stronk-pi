@@ -46,3 +46,19 @@ if [ -e "$tmp/home/.pi" ]; then
   printf '%s\n' "unexpected .pi directory created" >&2
   exit 1
 fi
+if [ -e "$tmp/home/.config/pi" ]; then
+  printf '%s\n' "unexpected .config/pi directory created" >&2
+  exit 1
+fi
+if [ -e "$tmp/home/.local/share/pi" ]; then
+  printf '%s\n' "unexpected .local/share/pi directory created" >&2
+  exit 1
+fi
+if [ -e "$tmp/home/.cache/pi" ]; then
+  printf '%s\n' "unexpected .cache/pi directory created" >&2
+  exit 1
+fi
+if [ -e "$tmp/home/.stronk-pi/home" ]; then
+  printf '%s\n' "unexpected private home created under state root" >&2
+  exit 1
+fi

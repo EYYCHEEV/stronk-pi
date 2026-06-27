@@ -41,8 +41,12 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
 )
 DEFAULT_PLUGIN_VERSION = "0.1.0"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
-DEFAULT_MCP_ADAPTER_NAME = "pi-mcp-adapter"
-DEFAULT_MCP_ADAPTER_VERSION = "2.9.0"
+DEFAULT_PACKAGE_PINS = {
+    "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),
+    "subagents": ("pi-subagents", "0.22.0"),
+    "intercom": ("pi-intercom", "0.6.0"),
+}
+SUBAGENT_RUNTIME_PACKAGE_KEYS = ("subagents", "intercom")
 SHARED_HOOK_TIMEOUT_SEC = 5.0
 LEGACY_MANAGED_RUNTIME_PATHS = (
     Path("agent") / "agents",
@@ -50,8 +54,8 @@ LEGACY_MANAGED_RUNTIME_PATHS = (
     Path("agent") / "models.json",
     Path("agent") / "settings.json",
     Path("config") / "web-search.json",
-    Path("home") / ".pi" / "web-search.json",
 )
+LEGACY_PRIVATE_HOME_AGENT_DIRS = {".agents", ".claude", ".codex"}
 CONTROL_PLANE_ENV_NAMES = (
     "STRONKPI_SETUP_ROOT",
     "STRONKPI_STATE_ROOT",
@@ -65,7 +69,13 @@ CONTROL_PLANE_ENV_NAMES = (
     "STRONK_PI_AGENT_DIR",
     "STRONK_PI_CODEX_AGENTS",
     "STRONK_PI_SESSION_BASE",
-    "STRONK_PI_PRIVATE_HOME",
+    "STRONK_PI_CONFIG_ROOT",
+    "STRONK_PI_LOG_ROOT",
+    "STRONK_PI_CACHE_ROOT",
+    "STRONK_PI_TMP_ROOT",
+    "STRONK_PI_MCP_CONFIG_PATH",
+    "STRONK_PI_WEB_SEARCH_CONFIG",
+    "STRONK_PI_INTERCOM_BRIDGE",
     "STRONK_PI_MCP_REGISTRY",
     "STRONK_PI_ROLE_MANIFEST",
     "STRONK_PI_ROLE_MANIFEST_LOCAL",
@@ -73,6 +83,21 @@ CONTROL_PLANE_ENV_NAMES = (
     "STRONK_PI_SUBAGENT_FACADE",
     "STRONK_PI_SUBAGENT_ADAPTER",
     "STRONK_PI_SKILL_ROOTS",
+    "PI_CODING_AGENT_DIR",
+    "PI_CODING_AGENT_SESSION_DIR",
+    "PI_SKIP_VERSION_CHECK",
+    "PI_OFFLINE",
+)
+CONTROL_PLANE_PREFIX_ALLOWLIST_EXACT = {
+    "STRONKPI_NO_NETWORK",
+    "STRONKPI_DEV_OVERRIDES",
+    "STRONK_PI_DEV_OVERRIDES",
+    "STRONK_PI_SEARCH_PROVIDER",
+    "STRONK_PI_SMOKE_PLUGIN",
+    "STRONK_PI_SMOKE_AGENT_RUN",
+}
+CONTROL_PLANE_PREFIX_ALLOWLIST_PREFIXES = (
+    "STRONK_PI_IMAGE_PREFLIGHT",
 )
 CONTROLLED_PI_FLAGS = {
     "--extension",
@@ -154,7 +179,8 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[/\\]")
 MCP_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-PROJECT_MCP_CONFIG_RELATIVES = (Path(".mcp.json"), Path(".pi") / "mcp.json")
+PROJECT_GENERATED_MCP_CONFIG_RELATIVE = Path(".mcp.json")
+PROJECT_MCP_BYPASS_CONFIG_RELATIVES = (Path(".pi") / "mcp.json",)
 DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi"
 EXPECTED_ARTIFACT_IDENTITIES = {
     "stronk-pi-plugin": {
@@ -171,6 +197,12 @@ ENV_NAMES = (
     "KIMI_API_KEY",
     "KIMI_CODE_API_KEY",
     "ALIBABA_CLOUD_CODING_PLAN_API_KEY",
+)
+REAL_HOME_WRITE_RISK_RELATIVES = (
+    Path(".pi"),
+    Path(".config") / "pi",
+    Path(".local") / "share" / "pi",
+    Path(".cache") / "pi",
 )
 READ_ONLY_TOOLS = {"read", "grep", "find", "ls", "glob", "todoread"}
 WEB_TOOLS = {"web_search", "code_search", "fetch_content"}
@@ -567,11 +599,76 @@ def validate_image_tool(tool: str, payload: dict[str, Any]) -> tuple[bool, str]:
     return True, "distribution-owned safe tool class"
 
 
+STRONK_SUBAGENT_DENIED_OVERRIDE_KEYS = {
+    "allowedTools",
+    "apiKey",
+    "artifactPath",
+    "async",
+    "background",
+    "chain",
+    "concurrency",
+    "context",
+    "cwd",
+    "extensions",
+    "forkContext",
+    "fork_context",
+    "includeRaw",
+    "maxConcurrency",
+    "model",
+    "output",
+    "outputMode",
+    "outputPath",
+    "packages",
+    "provider",
+    "raw",
+    "skill",
+    "skills",
+    "systemPrompt",
+    "thinking",
+    "toolChoice",
+    "tools",
+    "unredacted",
+    "worktree",
+    "workingDirectory",
+}
+
+
+def find_stronk_subagent_override(value: Any, path: tuple[str, ...] = ()) -> tuple[str, str] | None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            next_path = (*path, str(key))
+            if key in STRONK_SUBAGENT_DENIED_OVERRIDE_KEYS:
+                return key, ".".join(next_path)
+            found = find_stronk_subagent_override(item, next_path)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            found = find_stronk_subagent_override(item, (*path, str(index)))
+            if found:
+                return found
+    return None
+
+
 def guarded_tool_decision(tool: str, payload: dict[str, Any], cwd: Path, context: dict[str, Any]) -> dict[str, Any]:
     if tool in IMAGE_TOOLS:
         allowed, reason = validate_image_tool(tool, payload)
         return {"allow": allowed, "reason": reason, "input": payload}
-    if tool in {"mcp", "stronk_subagent"} | WEB_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
+    if tool == "stronk_subagent":
+        override = find_stronk_subagent_override(payload)
+        if override:
+            key, override_path = override
+            if key == "cwd":
+                reason = f"stronk_subagent cwd override denied: {override_path}"
+            else:
+                reason = f"stronk_subagent override denied: {key} at {override_path}"
+            return {
+                "allow": False,
+                "reason": reason,
+                "input": payload,
+            }
+        return {"allow": True, "reason": "distribution-owned safe tool class", "input": payload}
+    if tool in {"mcp"} | WEB_TOOLS | SESSION_TOOLS | READ_ONLY_TOOLS:
         return {"allow": True, "reason": "distribution-owned safe tool class", "input": payload}
     if tool == "subagent":
         return {"allow": False, "reason": "raw subagent tool denied; use stronk_subagent", "input": payload}
@@ -1010,6 +1107,58 @@ def harness_state_root() -> Path:
     return resolve_state_root()
 
 
+def state_config_root(root: Path) -> Path:
+    return root / "config"
+
+
+def state_cache_root(root: Path) -> Path:
+    return root / "cache"
+
+
+def state_log_root(root: Path) -> Path:
+    return root / "logs"
+
+
+def state_tmp_root(root: Path) -> Path:
+    return root / "tmp"
+
+
+def state_agent_dir(root: Path) -> Path:
+    return root / "agent"
+
+
+def state_session_dir(root: Path) -> Path:
+    return state_agent_dir(root) / "sessions"
+
+
+def state_web_search_config_path(root: Path) -> Path:
+    return state_config_root(root) / "pi" / "web-search.json"
+
+
+def state_intercom_bridge_path(root: Path, name: str = "pi-intercom") -> Path:
+    return state_agent_dir(root) / "extensions" / name
+
+
+def real_home_write_risks(home: Path, root: Path) -> list[str]:
+    return [str(home / relative) for relative in REAL_HOME_WRITE_RISK_RELATIVES] + [str(root / "home")]
+
+
+def ensure_state_root_layout(root: Path) -> None:
+    ensure_private_dir(root)
+    for path in (
+        state_config_root(root),
+        state_config_root(root) / "pi",
+        state_agent_dir(root),
+        state_agent_dir(root) / "agents",
+        state_agent_dir(root) / "extensions",
+        state_session_dir(root),
+        state_log_root(root),
+        state_cache_root(root),
+        state_tmp_root(root),
+    ):
+        ensure_private_dir(path)
+
+
 def expand_runtime_path(raw: str, root: Path | None = None) -> Path:
     if raw == "~/.stronk-pi" or raw.startswith("~/.stronk-pi/"):
         base = root if root is not None else Path.home() / ".stronk-pi"
@@ -1358,14 +1507,22 @@ def tools_for_role(role_name: str, pi_cfg: dict[str, Any]) -> list[str]:
     return write_tools if role_name in write_roles else read_tools
 
 
-def render_pi_role(role_path: Path, role: dict[str, Any], pi_cfg: dict[str, Any]) -> str:
+def role_extensions(pi_cfg: dict[str, Any], root: Path) -> list[str]:
+    extensions = string_list_config(pi_cfg.get("extensions") or [], "pi.extensions")
+    return [
+        str(state_intercom_bridge_path(root, "pi-intercom")) if item == "pi-intercom" else item
+        for item in extensions
+    ]
+
+
+def render_pi_role(role_path: Path, role: dict[str, Any], pi_cfg: dict[str, Any], root: Path) -> str:
     name = role_template_name(role_path)
     description = str(role.get("description") or name.replace("-", " ")).strip()
     instructions = str(role.get("developer_instructions") or "").strip()
     if not instructions:
         raise StronkPiError(f"role template missing developer_instructions: {role_path}")
     tools = ", ".join(tools_for_role(name, pi_cfg))
-    extensions = string_list_config(pi_cfg.get("extensions") or [], "pi.extensions")
+    extensions = role_extensions(pi_cfg, root)
     lines = [
         "---",
         f"name: {name}",
@@ -1419,7 +1576,7 @@ def generate_pi_agents(root: Path, *, dry_run: bool) -> list[Path]:
     _manifest, _local, pi_cfg, role_dirs, generated_dir = load_runtime_role_config(root)
     outputs: dict[Path, str] = {}
     for name, role_path in role_files_from_dirs(role_dirs).items():
-        outputs[generated_dir / f"{name}.md"] = render_pi_role(role_path, load_toml_document(role_path), pi_cfg)
+        outputs[generated_dir / f"{name}.md"] = render_pi_role(role_path, load_toml_document(role_path), pi_cfg, root)
     changed: list[Path] = []
     for path, content in sorted(outputs.items()):
         if write_managed_text(path, content, dry_run=dry_run):
@@ -1427,12 +1584,10 @@ def generate_pi_agents(root: Path, *, dry_run: bool) -> list[Path]:
     return changed
 
 
-def ensure_private_pi_home_config(root: Path, *, web_search_content: str, dry_run: bool) -> list[Path]:
-    private_pi = root / "home" / ".pi"
-    target = private_pi / "web-search.json"
+def ensure_state_pi_config(root: Path, *, web_search_content: str, dry_run: bool) -> list[Path]:
+    target = state_web_search_config_path(root)
     if not dry_run:
-        ensure_private_dir(root / "home")
-        ensure_private_dir(private_pi)
+        ensure_private_dir(target.parent)
     changed: list[Path] = []
     if write_private_runtime_text(target, web_search_content, dry_run=dry_run):
         changed.append(target)
@@ -1443,13 +1598,9 @@ def install_bundle_defaults(*, root: Path | None = None, dry_run: bool = False) 
     target_root = root or state_root()
     changes: list[str] = []
     if not dry_run:
-        ensure_private_dir(target_root)
-        ensure_private_dir(target_root / "config")
-        ensure_private_dir(target_root / "agent")
+        ensure_state_root_layout(target_root)
     for backup_path in migrate_legacy_managed_symlinks(target_root, dry_run=dry_run):
         changes.append(str(backup_path))
-    if not dry_run:
-        ensure_private_dir(target_root / "agent" / "agents")
     defaults_path = target_root / "config" / "defaults.toml"
     roles_path = target_root / "config" / "roles.toml"
     if write_managed_text(defaults_path, defaults_template(target_root), dry_run=dry_run):
@@ -1463,12 +1614,11 @@ def install_bundle_defaults(*, root: Path | None = None, dry_run: bool = False) 
         target_root / "agent" / "AGENTS.md": (setup_root() / "config" / "pi" / "agent" / "AGENTS.md").read_text(encoding="utf-8"),
         target_root / "agent" / "models.json": (setup_root() / "config" / "pi" / "agent" / "models.json").read_text(encoding="utf-8"),
         target_root / "agent" / "settings.json": (setup_root() / "config" / "pi" / "agent" / "settings.base.json").read_text(encoding="utf-8"),
-        target_root / "config" / "web-search.json": web_search_content,
     }
     for path, content in agent_files.items():
         if write_managed_text(path, content, dry_run=dry_run, require_marker=False):
             changes.append(str(path))
-    for path in ensure_private_pi_home_config(target_root, web_search_content=web_search_content, dry_run=dry_run):
+    for path in ensure_state_pi_config(target_root, web_search_content=web_search_content, dry_run=dry_run):
         changes.append(str(path))
     if dry_run and not roles_path.exists():
         for source in public_role_templates():
@@ -1484,6 +1634,131 @@ def install_bundle_defaults(*, root: Path | None = None, dry_run: bool = False) 
         "changed": changes,
         "dryRun": dry_run,
     }
+
+
+def private_home_cleanup_file_action(root: Path, obsolete_home: Path, path: Path, info: os.stat_result) -> dict[str, str]:
+    if info.st_nlink > 1:
+        raise StronkPiError(f"obsolete private home file has multiple hardlinks: {path}")
+    relative = path.relative_to(obsolete_home)
+    if relative == Path(".pi") / "web-search.json":
+        return {
+            "action": "migrate",
+            "source": str(path),
+            "target": str(state_web_search_config_path(root)),
+        }
+    parts = relative.parts
+    if len(parts) >= 3 and parts[0] in LEGACY_PRIVATE_HOME_AGENT_DIRS and parts[1] == "log":
+        legacy_namespace = parts[0].lstrip(".")
+        return {
+            "action": "migrate",
+            "source": str(path),
+            "target": str(state_log_root(root) / "legacy-private-home" / legacy_namespace / Path(*parts[2:])),
+        }
+    if len(parts) >= 3 and parts[0] in LEGACY_PRIVATE_HOME_AGENT_DIRS and parts[1] == "sessions":
+        legacy_namespace = parts[0].lstrip(".")
+        return {
+            "action": "migrate",
+            "source": str(path),
+            "target": str(state_session_dir(root) / "legacy-private-home" / legacy_namespace / Path(*parts[2:])),
+        }
+    if private_home_cache_like_path(relative):
+        return {"action": "delete", "source": str(path)}
+    raise StronkPiError(f"obsolete private home contains unknown non-cache file: {path}")
+
+
+def private_home_cache_like_path(relative: Path) -> bool:
+    parts = relative.parts
+    if not parts:
+        return False
+    if parts[0] in {".npm", ".cache"}:
+        return True
+    if len(parts) >= 2 and parts[0] == "Library" and parts[1] in {"Caches", "Logs"}:
+        return True
+    if len(parts) >= 2 and parts[0] == ".pi" and parts[1] in {"cache", "logs", "tmp"}:
+        return True
+    if len(parts) >= 2 and parts[0] in LEGACY_PRIVATE_HOME_AGENT_DIRS and parts[1] in {"cache", "tmp"}:
+        return True
+    return False
+
+
+def plan_private_home_cleanup(root: Path) -> dict[str, Any]:
+    obsolete_home = root / "home"
+    result: dict[str, Any] = {
+        "ok": True,
+        "obsoleteHome": str(obsolete_home),
+        "exists": False,
+        "actions": [],
+        "directories": [],
+    }
+    try:
+        home_info = obsolete_home.lstat()
+    except FileNotFoundError:
+        return result
+    result["exists"] = True
+    if stat.S_ISLNK(home_info.st_mode):
+        raise StronkPiError(f"obsolete private home must not be a symlink: {obsolete_home}")
+    if not stat.S_ISDIR(home_info.st_mode):
+        raise StronkPiError(f"obsolete private home is not a directory: {obsolete_home}")
+
+    actions: list[dict[str, str]] = []
+    directories: list[Path] = []
+
+    def scan(path: Path) -> None:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            raise StronkPiError(f"obsolete private home contains symlink: {path}")
+        if stat.S_ISDIR(info.st_mode):
+            for child in sorted(path.iterdir(), key=lambda item: item.name):
+                scan(child)
+            directories.append(path)
+            return
+        if stat.S_ISREG(info.st_mode):
+            actions.append(private_home_cleanup_file_action(root, obsolete_home, path, info))
+            return
+        raise StronkPiError(f"obsolete private home contains unsupported file type: {path}")
+
+    scan(obsolete_home)
+    result["actions"] = actions
+    result["directories"] = [str(path) for path in directories]
+    return result
+
+
+def apply_private_home_cleanup(plan: dict[str, Any]) -> None:
+    for action in plan["actions"]:
+        source = Path(action["source"])
+        if action["action"] == "migrate":
+            target = Path(action["target"])
+            ensure_private_dir(target.parent)
+            if target.exists():
+                if target.is_symlink() or not target.is_file():
+                    raise StronkPiError(f"cleanup target is not a safe regular file: {target}")
+                if source.read_bytes() != target.read_bytes():
+                    raise StronkPiError(f"cleanup target already exists with different content: {target}")
+                source.unlink()
+            else:
+                source.replace(target)
+                os.chmod(target, 0o600)
+        elif action["action"] == "delete":
+            source.unlink()
+        else:
+            raise StronkPiError(f"unknown cleanup action: {action['action']}")
+    directories = sorted((Path(path) for path in plan["directories"]), key=lambda item: len(item.parts), reverse=True)
+    for directory in directories:
+        try:
+            directory.rmdir()
+        except FileNotFoundError:
+            continue
+
+
+def cleanup_private_home(root: Path, *, dry_run: bool) -> dict[str, Any]:
+    plan = plan_private_home_cleanup(root)
+    plan["dryRun"] = dry_run
+    if not dry_run and plan["exists"]:
+        apply_private_home_cleanup(plan)
+        plan["removed"] = not (root / "home").exists()
+    else:
+        plan["removed"] = False
+    return plan
 
 
 def inspect_bundle_status(root: Path | None = None) -> dict[str, Any]:
@@ -1570,6 +1845,23 @@ def load_mcp_tools(path: Path) -> list[str]:
     return tools
 
 
+def validate_mcp_tools_path(path: Path) -> None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError as exc:
+        raise StronkPiError(f"MCP tools allowlist missing: {path}") from exc
+    if stat.S_ISLNK(info.st_mode):
+        raise StronkPiError(f"MCP tools allowlist must not be a symlink: {path}")
+    if not stat.S_ISREG(info.st_mode):
+        raise StronkPiError(f"MCP tools allowlist must be a regular file: {path}")
+    if info.st_uid != os.getuid():
+        raise StronkPiError(f"MCP tools allowlist must be owned by the current user: {path}")
+    if info.st_mode & stat.S_IWGRP:
+        raise StronkPiError(f"MCP tools allowlist must not be group-writable: {path}")
+    if info.st_mode & stat.S_IWOTH:
+        raise StronkPiError(f"MCP tools allowlist must not be world-writable: {path}")
+
+
 def validate_mcp_registry(
     path: Path,
     *,
@@ -1632,16 +1924,12 @@ def validate_mcp_registry(
         default_tools = Path.cwd() / ".mcp-tools"
         tools_path = default_tools if default_tools.exists() else None
     if tools_path is not None:
-        if not tools_path.exists():
-            errors.append(f"MCP tools allowlist missing: {tools_path}")
-        elif tools_path.is_symlink():
-            errors.append(f"MCP tools allowlist must not be a symlink: {tools_path}")
-        else:
-            try:
-                selected = load_mcp_tools(tools_path)
-                result["selectedTools"] = selected
-            except (OSError, StronkPiError) as exc:
-                errors.append(str(exc))
+        try:
+            validate_mcp_tools_path(tools_path)
+            selected = load_mcp_tools(tools_path)
+            result["selectedTools"] = selected
+        except (OSError, StronkPiError) as exc:
+            errors.append(str(exc))
 
     selected_set = set(selected)
     server_names: list[str] = []
@@ -1746,18 +2034,46 @@ def default_mcp_tools_path(cwd: Path) -> Path | None:
 
 
 def find_project_mcp_configs(cwd: Path) -> list[Path]:
-    return [cwd / relative for relative in PROJECT_MCP_CONFIG_RELATIVES if (cwd / relative).exists()]
+    return [cwd / relative for relative in PROJECT_MCP_BYPASS_CONFIG_RELATIVES if (cwd / relative).exists()]
+
+
+def project_generated_mcp_config_path(cwd: Path, root: Path) -> Path:
+    return cwd.resolve(strict=False) / PROJECT_GENERATED_MCP_CONFIG_RELATIVE
 
 
 def selected_mcp_tools_for_runtime(cwd: Path, tools_path: Path | None = None) -> tuple[Path | None, list[str]]:
     selected_path = tools_path or default_mcp_tools_path(cwd)
     if selected_path is None:
         return None, []
-    if not selected_path.exists():
-        raise StronkPiError(f"MCP tools allowlist missing: {selected_path}")
-    if selected_path.is_symlink():
-        raise StronkPiError(f"MCP tools allowlist must not be a symlink: {selected_path}")
+    validate_mcp_tools_path(selected_path)
     return selected_path, unique_ordered(load_mcp_tools(selected_path))
+
+
+def write_generated_mcp_config(path: Path, content: str) -> bool:
+    existing = path.read_text(encoding="utf-8") if path.exists() and path.is_file() else None
+    if existing == content:
+        os.chmod(path, 0o600)
+        return False
+    if path.exists():
+        if path.is_symlink():
+            raise StronkPiError(f"generated MCP config must not be a symlink: {path}")
+        if not path.is_file():
+            raise StronkPiError(f"generated MCP config path is not a regular file: {path}")
+    ensure_private_dir(path.parent)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.chmod(tmp, 0o600)
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return True
 
 
 def mcp_registry_file_for_read(path: Path) -> Path:
@@ -1798,22 +2114,29 @@ def build_mcp_adapter_config(registry_path: Path, selected_tools: list[str]) -> 
     }
 
 
-def mcp_adapter_pin(defaults: dict[str, Any]) -> tuple[str, str]:
+def runtime_package_pin(defaults: dict[str, Any], key: str) -> tuple[str, str]:
+    fallback = DEFAULT_PACKAGE_PINS.get(key)
+    if fallback is None:
+        raise StronkPiError(f"unknown runtime package pin: {key}")
     pins = defaults.get("package_pins")
     if not isinstance(pins, dict):
-        return DEFAULT_MCP_ADAPTER_NAME, DEFAULT_MCP_ADAPTER_VERSION
-    adapter = pins.get("mcp_adapter")
-    if not isinstance(adapter, dict):
-        return DEFAULT_MCP_ADAPTER_NAME, DEFAULT_MCP_ADAPTER_VERSION
-    name = adapter.get("name")
-    version = adapter.get("version")
+        return fallback
+    package = pins.get(key)
+    if not isinstance(package, dict):
+        return fallback
+    name = package.get("name")
+    version = package.get("version")
     return (
-        name if isinstance(name, str) and name.strip() else DEFAULT_MCP_ADAPTER_NAME,
-        version if isinstance(version, str) and version.strip() else DEFAULT_MCP_ADAPTER_VERSION,
+        name if isinstance(name, str) and name.strip() else fallback[0],
+        version if isinstance(version, str) and version.strip() else fallback[1],
     )
 
 
-def mcp_adapter_candidate_paths(root: Path, name: str, version: str) -> list[Path]:
+def mcp_adapter_pin(defaults: dict[str, Any]) -> tuple[str, str]:
+    return runtime_package_pin(defaults, "mcp_adapter")
+
+
+def runtime_package_candidate_paths(root: Path, name: str, version: str) -> list[Path]:
     return [
         root / "agent" / "npm" / "node_modules" / name,
         root / "artifacts" / f"{name}-{version}" / "package",
@@ -1833,11 +2156,54 @@ def matching_package_root(path: Path, *, name: str, version: str) -> bool:
 
 def resolve_mcp_adapter_package(root: Path, defaults: dict[str, Any]) -> tuple[Path, bool]:
     name, version = mcp_adapter_pin(defaults)
-    candidates = mcp_adapter_candidate_paths(root, name, version)
+    candidates = runtime_package_candidate_paths(root, name, version)
     for candidate in candidates:
         if matching_package_root(candidate, name=name, version=version):
             return candidate, True
     return candidates[0], False
+
+
+def runtime_package_status(root: Path, defaults: dict[str, Any], key: str) -> dict[str, Any]:
+    name, version = runtime_package_pin(defaults, key)
+    candidates = runtime_package_candidate_paths(root, name, version)
+    package_path = candidates[0]
+    installed = False
+    for candidate in candidates:
+        if matching_package_root(candidate, name=name, version=version):
+            package_path = candidate
+            installed = True
+            break
+    return {
+        "key": key,
+        "packageName": name,
+        "packageVersion": version,
+        "packagePath": str(package_path),
+        "installed": installed,
+    }
+
+
+def runtime_symlink_matches(link: Path, target: Path) -> bool:
+    if not link.is_symlink():
+        return False
+    try:
+        return link.resolve(strict=True) == target.resolve(strict=True)
+    except FileNotFoundError:
+        return False
+
+
+def ensure_runtime_symlink(link: Path, target: Path, label: str) -> bool:
+    ensure_private_dir(link.parent)
+    if link.is_symlink():
+        try:
+            if runtime_symlink_matches(link, target):
+                return False
+        except FileNotFoundError:
+            pass
+        link.unlink()
+    elif link.exists():
+        raise StronkPiError(f"{label} path already exists and is not a managed symlink: {link}")
+    link.symlink_to(target, target_is_directory=target.is_dir())
+    return True
 
 
 def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
@@ -1847,6 +2213,7 @@ def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
     adapter_path, adapter_installed = resolve_mcp_adapter_package(root, defaults)
     tools_path, selected = selected_mcp_tools_for_runtime(launch_cwd)
     project_configs = find_project_mcp_configs(launch_cwd)
+    config_path = project_generated_mcp_config_path(launch_cwd, root)
     return {
         "configured": bool(selected),
         "enabled": bool(selected) and adapter_installed and not project_configs,
@@ -1854,7 +2221,7 @@ def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
         "packageVersion": version,
         "adapterPath": str(adapter_path),
         "adapterInstalled": adapter_installed,
-        "configPath": str(root / "agent" / "mcp.json"),
+        "configPath": str(config_path),
         "registryPath": str(default_mcp_registry_path()),
         "toolsPath": str(tools_path) if tools_path else None,
         "selectedTools": selected,
@@ -1888,8 +2255,8 @@ def prepare_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
             "install a verified adapter package before launching with selected MCP servers"
         )
     config = build_mcp_adapter_config(registry_path, selected)
-    config_path = root / "agent" / "mcp.json"
-    if write_private_runtime_text(config_path, json.dumps(config, indent=2, sort_keys=True) + "\n", dry_run=False):
+    config_path = project_generated_mcp_config_path(launch_cwd, root)
+    if write_generated_mcp_config(config_path, json.dumps(config, indent=2, sort_keys=True) + "\n"):
         status["configChanged"] = True
     else:
         status["configChanged"] = False
@@ -1901,6 +2268,67 @@ def prepare_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
             "selectedTools": selected,
         }
     )
+    return status
+
+
+def inspect_subagent_runtime(root: Path) -> dict[str, Any]:
+    defaults = load_runtime_defaults(root)
+    facade = harness_string(defaults, "subagent_facade", "stronk")
+    adapter = harness_string(defaults, "subagent_adapter", "intercom")
+    configured = bool(facade) and facade not in {"off", "0"} and adapter == "intercom"
+    packages = {
+        key: runtime_package_status(root, defaults, key)
+        for key in SUBAGENT_RUNTIME_PACKAGE_KEYS
+    }
+    missing = [item for item in packages.values() if not item["installed"]]
+    extension_paths = [
+        str(packages[key]["packagePath"])
+        for key in SUBAGENT_RUNTIME_PACKAGE_KEYS
+        if packages[key]["installed"]
+    ]
+    intercom_package = packages["intercom"]
+    intercom_bridge_path = state_intercom_bridge_path(root, "pi-intercom")
+    intercom_bridge_target = (
+        Path(str(intercom_package["packagePath"])) if intercom_package["installed"] else None
+    )
+    return {
+        "configured": configured,
+        "enabled": configured and not missing,
+        "facade": facade,
+        "adapter": adapter,
+        "packages": packages,
+        "missingPackages": missing,
+        "extensionPaths": extension_paths if configured and not missing else [],
+        "intercomBridgePath": str(intercom_bridge_path),
+        "intercomBridgeTarget": intercom_package["packagePath"] if intercom_package["installed"] else None,
+        "intercomBridgeLinked": (
+            runtime_symlink_matches(intercom_bridge_path, intercom_bridge_target)
+            if intercom_bridge_target is not None
+            else False
+        ),
+    }
+
+
+def prepare_subagent_runtime(root: Path) -> dict[str, Any]:
+    status = inspect_subagent_runtime(root)
+    if status["configured"] and not status["enabled"]:
+        missing = ", ".join(
+            f"{item['packageName']}@{item['packageVersion']} at {item['packagePath']}"
+            for item in status["missingPackages"]
+        )
+        raise StronkPiError(
+            "subagent runtime package missing: "
+            f"expected {missing}; install the pinned package runtime before launching live Stronk Pi subagents"
+        )
+    if status["enabled"]:
+        intercom_target = Path(str(status["packages"]["intercom"]["packagePath"]))
+        bridge_path = Path(str(status["intercomBridgePath"]))
+        status["intercomBridgeChanged"] = ensure_runtime_symlink(
+            bridge_path,
+            intercom_target,
+            "pi-intercom bridge",
+        )
+        status["intercomBridgeLinked"] = runtime_symlink_matches(bridge_path, intercom_target)
     return status
 
 
@@ -2410,6 +2838,20 @@ def cmd_refresh_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cleanup_private_home(args: argparse.Namespace) -> int:
+    payload = cleanup_private_home(state_root(), dry_run=not args.apply)
+    if args.json:
+        json_out(payload)
+        return 0
+    mode = "dry-run" if payload["dryRun"] else "applied"
+    print(f"stronkpi-setup cleanup-private-home: {mode}")
+    print(f"obsolete_home={payload['obsoleteHome']}")
+    print(f"exists={str(payload['exists']).lower()}")
+    print(f"action_count={len(payload['actions'])}")
+    print(f"removed={str(payload['removed']).lower()}")
+    return 0
+
+
 def cmd_import_codex_roles(args: argparse.Namespace) -> int:
     payload = import_codex_roles(
         source=args.source,
@@ -2485,7 +2927,22 @@ def cmd_run(args: argparse.Namespace) -> int:
 def validate_harness_control_env() -> None:
     if dev_overrides_enabled():
         return
-    blocked = [name for name in CONTROL_PLANE_ENV_NAMES if os.environ.get(name)]
+    blocked: list[str] = []
+    for name, value in os.environ.items():
+        if not value:
+            continue
+        if name in CONTROL_PLANE_ENV_NAMES:
+            blocked.append(name)
+            continue
+        if not name.startswith(("STRONK_PI_", "STRONKPI_", "PI_")):
+            continue
+        if name in CONTROL_PLANE_PREFIX_ALLOWLIST_EXACT:
+            continue
+        if any(name.startswith(prefix) for prefix in CONTROL_PLANE_PREFIX_ALLOWLIST_PREFIXES):
+            continue
+        if name in ENV_NAMES or SECRET_KEY_PATTERN.search(name):
+            continue
+        blocked.append(name)
     if blocked:
         raise StronkPiError(
             "control-plane env override(s) require STRONK_PI_DEV_OVERRIDES=1: "
@@ -2509,39 +2966,143 @@ def harness_string(defaults: dict[str, Any], key: str, fallback: str) -> str:
     return fallback
 
 
+def operator_home_path() -> Path:
+    raw = os.environ.get("HOME")
+    home = Path(raw).expanduser() if raw else Path.home()
+    if not home.is_absolute():
+        raise StronkPiError(f"HOME must be absolute: {home}")
+    return home.resolve(strict=False)
+
+
+def validate_optional_absolute_env_path(env: dict[str, str], name: str) -> None:
+    raw = env.get(name)
+    if not raw:
+        return
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        raise StronkPiError(f"{name} must be absolute: {path}")
+
+
+def trusted_python_executable() -> str:
+    candidate = Path(sys.executable).resolve(strict=False)
+    if candidate.is_absolute() and candidate.exists():
+        return str(candidate)
+    resolved = shutil.which("python3")
+    if resolved:
+        return str(Path(resolved).resolve(strict=False))
+    raise StronkPiError("unable to resolve trusted Python interpreter")
+
+
+def sanitized_harness_path(root: Path) -> str:
+    entries: list[str] = []
+    seen: set[str] = set()
+
+    def append(path: Path) -> None:
+        text = str(path)
+        if text and text not in seen:
+            seen.add(text)
+            entries.append(text)
+
+    append(root / "pi-fork-runtime" / "node_modules" / ".bin")
+    for raw in os.environ.get("PATH", "").split(os.pathsep):
+        if not raw or raw == ".":
+            continue
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            continue
+        append(candidate.resolve(strict=False))
+    return os.pathsep.join(entries)
+
+
+def git_root_or_self(path: Path) -> Path:
+    proc = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if proc.returncode == 0 and proc.stdout.strip():
+        return Path(proc.stdout.strip()).resolve(strict=False)
+    return path.resolve(strict=False)
+
+
+def dirs_between(root: Path, leaf: Path) -> list[Path]:
+    try:
+        relative = leaf.relative_to(root)
+    except ValueError:
+        return [leaf]
+    dirs = [root]
+    current = root
+    for part in relative.parts:
+        current = current / part
+        dirs.append(current)
+    return dirs
+
+
+def discover_skill_roots(*, cwd: Path | None = None, home: Path | None = None) -> list[dict[str, str]]:
+    launch_cwd = (cwd or Path.cwd()).resolve(strict=False)
+    operator_home = (home or Path.home()).resolve(strict=False)
+    roots: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    for directory in dirs_between(git_root_or_self(launch_cwd), launch_cwd):
+        candidate = directory / ".agents" / "skills"
+        if not candidate.is_dir():
+            continue
+        directory_real = directory.resolve(strict=False)
+        candidate_real = candidate.resolve(strict=False)
+        if not is_relative_to(candidate_real, directory_real):
+            raise StronkPiError(f"repo skill root escapes launch directory: {candidate} -> {candidate_real}")
+        resolved = str(candidate_real)
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append({"path": resolved, "scope": "repo"})
+
+    user_root = operator_home / ".agents" / "skills"
+    if user_root.is_dir():
+        resolved = str(user_root.resolve(strict=False))
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append({"path": resolved, "scope": "user"})
+
+    return roots
+
+
 def harness_environment(root: Path) -> dict[str, str]:
-    private_home = root / "home"
     guard_script = setup_root() / "lib" / "stronk-pi-guard.py"
     defaults = load_runtime_defaults(root)
-    ensure_private_dir(private_home)
-    ensure_private_dir(private_home / ".config")
-    ensure_private_dir(root / "agent" / "sessions")
-    state_link = private_home / ".stronk-pi"
-    if state_link.is_symlink():
-        if state_link.resolve(strict=False) != root.resolve(strict=False):
-            raise StronkPiError(f"private state link points outside Stronk Pi root: {state_link}")
-    elif state_link.exists():
-        raise StronkPiError(f"private state link path must be a symlink managed by stronkpi: {state_link}")
-    else:
-        state_link.symlink_to(root, target_is_directory=True)
+    skill_roots = discover_skill_roots()
+    ensure_state_root_layout(root)
+    home = operator_home_path()
+    python = trusted_python_executable()
     env = os.environ.copy()
+    env["HOME"] = str(home)
+    validate_optional_absolute_env_path(env, "XDG_CONFIG_HOME")
+    validate_optional_absolute_env_path(env, "XDG_CACHE_HOME")
     env.update(
         {
-            "HOME": str(private_home),
-            "XDG_CONFIG_HOME": str(private_home / ".config"),
-            "PATH": str(root / "pi-fork-runtime" / "node_modules" / ".bin") + os.pathsep + os.environ.get("PATH", ""),
+            "PATH": sanitized_harness_path(root),
             "PI_SKIP_VERSION_CHECK": "1",
-            "PI_CODING_AGENT_DIR": str(root / "agent"),
-            "PI_CODING_AGENT_SESSION_DIR": str(root / "agent" / "sessions"),
+            "PI_CODING_AGENT_DIR": str(state_agent_dir(root)),
+            "PI_CODING_AGENT_SESSION_DIR": str(state_session_dir(root)),
             "STRONK_PI_GUARD": str(guard_script),
-            "STRONK_PI_HOOK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "hook"]),
-            "STRONK_PI_CODEX_HOOK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "codex-hook"]),
-            "STRONK_PI_URL_CHECK_COMMAND_JSON": json.dumps(["python3", str(guard_script), "url-check"]),
-            "STRONK_PI_TELEGRAM_COMMAND_JSON": json.dumps(["python3", str(guard_script), "telegram"]),
+            "STRONK_PI_HOOK_COMMAND_JSON": json.dumps([python, str(guard_script), "hook"]),
+            "STRONK_PI_CODEX_HOOK_COMMAND_JSON": json.dumps([python, str(guard_script), "codex-hook"]),
+            "STRONK_PI_URL_CHECK_COMMAND_JSON": json.dumps([python, str(guard_script), "url-check"]),
+            "STRONK_PI_TELEGRAM_COMMAND_JSON": json.dumps([python, str(guard_script), "telegram"]),
             "STRONK_PI_STATE_ROOT": str(root),
-            "STRONK_PI_ROLE_MANIFEST": str(root / "config" / "roles.toml"),
+            "STRONK_PI_CONFIG_ROOT": str(state_config_root(root)),
+            "STRONK_PI_LOG_ROOT": str(state_log_root(root)),
+            "STRONK_PI_CACHE_ROOT": str(state_cache_root(root)),
+            "STRONK_PI_TMP_ROOT": str(state_tmp_root(root)),
+            "STRONK_PI_MCP_CONFIG_PATH": str(project_generated_mcp_config_path(Path.cwd(), root)),
+            "STRONK_PI_WEB_SEARCH_CONFIG": str(state_web_search_config_path(root)),
+            "STRONK_PI_INTERCOM_BRIDGE": str(state_intercom_bridge_path(root)),
+            "STRONK_PI_ROLE_MANIFEST": str(state_config_root(root) / "roles.toml"),
             "STRONK_PI_SUBAGENT_FACADE": harness_string(defaults, "subagent_facade", "stronk"),
             "STRONK_PI_SUBAGENT_ADAPTER": harness_string(defaults, "subagent_adapter", "intercom"),
+            "STRONK_PI_SKILL_ROOTS": json.dumps(skill_roots, separators=(",", ":")),
         }
     )
     search_provider = harness_string(defaults, "search_provider", "")
@@ -2560,6 +3121,8 @@ def harness_environment(root: Path) -> dict[str, str]:
 
 def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
     status = inspect_bundle_status(root)
+    skill_roots = discover_skill_roots()
+    home = operator_home_path()
     warnings: list[str] = []
     if not status["plugin"]["installed"]:
         warnings.append("plugin artifact is not installed; live launch will fail closed until setup update installs it")
@@ -2570,11 +3133,30 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
         warnings.append("selected MCP servers are configured but pi-mcp-adapter is not installed; live launch will fail closed")
     if mcp_status["projectConfigFiles"]:
         warnings.append("project MCP config files are present; live launch will fail closed to preserve the .mcp-tools boundary")
+    subagent_status = inspect_subagent_runtime(root)
+    if subagent_status["enabled"]:
+        subagent_status = prepare_subagent_runtime(root)
+    elif subagent_status["configured"]:
+        missing = ", ".join(
+            f"{item['packageName']}@{item['packageVersion']}"
+            for item in subagent_status["missingPackages"]
+        )
+        warnings.append(f"Stronk Pi subagent intercom runtime packages are missing ({missing}); live launch will fail closed")
     payload = {
         "ok": True,
         "version": VERSION,
         "setupRoot": str(setup_root()),
         "stateRoot": str(root),
+        "effectiveHome": str(home),
+        "configRoot": str(state_config_root(root)),
+        "cacheRoot": str(state_cache_root(root)),
+        "logRoot": str(state_log_root(root)),
+        "tmpRoot": str(state_tmp_root(root)),
+        "agentDir": str(state_agent_dir(root)),
+        "sessionDir": str(state_session_dir(root)),
+        "mcpConfigPath": str(mcp_status["configPath"]),
+        "intercomBridgePath": str(subagent_status["intercomBridgePath"]),
+        "blockedRealHomeWriteRisks": real_home_write_risks(home, root),
         "bundle": {
             "compatibilityVersion": BUNDLE_CONTRACT_VERSION,
             "configSchemaVersion": CONFIG_SCHEMA_VERSION,
@@ -2585,6 +3167,8 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
         "pluginArtifact": status["plugin"],
         "runtime": status["runtime"],
         "mcpAdapter": mcp_status,
+        "subagentRuntime": subagent_status,
+        "skillRoots": skill_roots,
         "warnings": warnings,
     }
     return payload
@@ -2592,7 +3176,14 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
 
 def print_harness_text(label: str, payload: dict[str, Any]) -> None:
     print(f"stronkpi {label}: ok")
+    print(f"effective_home={payload['effectiveHome']}")
     print(f"state_root={payload['stateRoot']}")
+    print(f"config_root={payload['configRoot']}")
+    print(f"cache_root={payload['cacheRoot']}")
+    print(f"log_root={payload['logRoot']}")
+    print(f"tmp_root={payload['tmpRoot']}")
+    print(f"agent_dir={payload['agentDir']}")
+    print(f"session_dir={payload['sessionDir']}")
     print(f"role_manifest={payload['roleConfig']['manifest']}")
     print(f"roles_local={payload['roleConfig']['localManifest']}")
     print(f"roles_local_exists={payload['roleConfig']['localManifestExists']}")
@@ -2600,9 +3191,15 @@ def print_harness_text(label: str, payload: dict[str, Any]) -> None:
     print(f"generated_agent_count={payload['roleConfig']['generatedAgentCount']}")
     print(f"plugin_installed={payload['pluginArtifact']['installed']}")
     print(f"runtime_installed={payload['runtime']['piBinaryExists']}")
+    print(f"skill_roots={json.dumps(payload.get('skillRoots', []), separators=(',', ':'))}")
     print(f"mcp_selected_tools={','.join(payload['mcpAdapter']['selectedTools'])}")
     print(f"mcp_adapter_installed={payload['mcpAdapter']['adapterInstalled']}")
     print(f"mcp_adapter_enabled={payload['mcpAdapter']['enabled']}")
+    print(f"mcp_config={payload['mcpConfigPath']}")
+    print(f"subagent_adapter={payload['subagentRuntime']['adapter']}")
+    print(f"subagent_runtime_enabled={payload['subagentRuntime']['enabled']}")
+    print(f"subagent_extensions={','.join(payload['subagentRuntime']['extensionPaths'])}")
+    print(f"intercom_bridge={payload['intercomBridgePath']}")
     for warning in payload.get("warnings", []):
         print(f"warning={warning}")
 
@@ -2611,7 +3208,9 @@ def build_pi_launch_args(
     *,
     plugin_path: Path,
     session_dir: Path,
+    skill_roots: list[dict[str, str]] | None = None,
     mcp_status: dict[str, Any] | None = None,
+    subagent_status: dict[str, Any] | None = None,
     offline: bool = False,
 ) -> list[str]:
     launch_args = [
@@ -2620,11 +3219,22 @@ def build_pi_launch_args(
         "--extension",
         str(plugin_path),
         "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--session-dir",
-        str(session_dir),
     ]
+    for root in skill_roots or []:
+        path = root.get("path") if isinstance(root, dict) else None
+        if isinstance(path, str) and path:
+            launch_args.extend(["--skill", path])
+    launch_args.extend(
+        [
+            "--no-prompt-templates",
+            "--no-themes",
+            "--session-dir",
+            str(session_dir),
+        ]
+    )
+    if subagent_status and subagent_status.get("enabled"):
+        for extension_path in subagent_status.get("extensionPaths") or []:
+            launch_args.extend(["--extension", str(extension_path)])
     if mcp_status and mcp_status.get("enabled"):
         launch_args.extend(
             [
@@ -2691,8 +3301,10 @@ def harness_main(argv: list[str] | None = None) -> int:
     if not pi_binary.is_file() or not os.access(pi_binary, os.X_OK):
         raise StronkPiError("trusted Pi runtime missing; install a trust-pinned runtime before live launch")
     env = harness_environment(root)
+    skill_roots = discover_skill_roots()
     plugin_path = Path(payload["pluginArtifact"]["expectedPath"])
     session_dir = root / "agent" / "sessions"
+    subagent_status = prepare_subagent_runtime(root)
     mcp_status = prepare_mcp_adapter_runtime(root)
     offline = os.environ.get("STRONKPI_NO_NETWORK") == "1"
     if offline:
@@ -2700,7 +3312,9 @@ def harness_main(argv: list[str] | None = None) -> int:
     launch_args = build_pi_launch_args(
         plugin_path=plugin_path,
         session_dir=session_dir,
+        skill_roots=skill_roots,
         mcp_status=mcp_status,
+        subagent_status=subagent_status,
         offline=offline,
     )
     os.execvpe(str(pi_binary), [*launch_args, *args.pi_args], env)
@@ -2733,6 +3347,13 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_config.add_argument("--dry-run", action="store_true")
     refresh_config.add_argument("--json", action="store_true")
     refresh_config.set_defaults(func=cmd_refresh_config)
+
+    cleanup = sub.add_parser("cleanup-private-home")
+    cleanup_mode = cleanup.add_mutually_exclusive_group()
+    cleanup_mode.add_argument("--dry-run", action="store_true")
+    cleanup_mode.add_argument("--apply", action="store_true")
+    cleanup.add_argument("--json", action="store_true")
+    cleanup.set_defaults(func=cmd_cleanup_private_home)
 
     import_codex_roles_parser = sub.add_parser("import-codex-roles")
     import_codex_roles_parser.add_argument(

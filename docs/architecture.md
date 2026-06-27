@@ -30,6 +30,8 @@ local commands remain outside this repo.
 The distribution repo does not own provider credentials or mutable runtime sessions.
 It prepares and validates a state root owned by the current user and verifies
 release artifacts before they can be installed.
+The guarded harness launches Pi with the operator's real `HOME` and routes
+Stronk Pi-owned state through explicit paths under `~/.stronk-pi/`.
 
 ## Config Precedence
 
@@ -80,7 +82,7 @@ The provider call remains one multi-image request; only the saved readback
 artifacts are split into three-image groups.
 The inline prompt block stays bounded.
 When session metadata is available, the plugin saves extended bounded
-sanitized analysis text under the private session state.
+sanitized analysis text under the state-root session directory.
 The model-facing inline block stays compact: image labels, safe filenames,
 MIME/size hints, and opaque `image_preflight_read` handles grouped at up to
 three images per handle.
@@ -131,16 +133,39 @@ refs, and accidental personal paths.
 server and the pinned adapter package is installed under the Stronk Pi state
 root.
 Before launch, the harness validates the registry, writes
-`~/.stronk-pi/agent/mcp.json` with only the selected servers, and passes that
-file through the adapter-owned `--mcp-config` flag.
+project `.mcp.json` with only the selected servers, and passes that file
+through the adapter-owned `--mcp-config` flag.
+The generated config is mode `0600` and uses `${ENV_NAME}` placeholders for
+selected secret environment variables instead of persisting their values.
 The adapter keeps MCP servers lazy: servers connect when their tools are used,
 not when Pi starts.
 
-Project-level `.mcp.json` and `.pi/mcp.json` files are rejected during Stronk
-Pi launch because upstream `pi-mcp-adapter` merges them after the configured
-Pi global file.
+The generated project `.mcp.json` is refreshed from the registry and
+`.mcp-tools` on each launch so Claude Code-compatible repo tooling can discover
+the same selected MCP surface.
+Symlinked `.mcp.json` and project `.pi/mcp.json` files are rejected because
+they would bypass the selected-server boundary or escape the project file.
 Operators must keep server definitions in the registry and use `.mcp-tools`
 for the selected-server boundary.
+
+## State Root Contract
+
+`~/.stronk-pi` is the only default Stronk Pi state root.
+The launcher sets explicit paths for Stronk-owned config, generated files,
+runtime artifacts, sessions, logs, caches, and temporary files:
+
+- `~/.stronk-pi/config/`
+- `~/.stronk-pi/agent/`
+- `~/.stronk-pi/agent/sessions/`
+- `~/.stronk-pi/agent/extensions/pi-intercom`
+- `~/.stronk-pi/artifacts/`
+- `~/.stronk-pi/pi-fork-runtime/`
+- `~/.stronk-pi/logs/`, `~/.stronk-pi/cache/`, and `~/.stronk-pi/tmp/`
+
+Operator-set `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are inherited when already
+present.
+The harness does not synthesize either variable to point into a private home.
+Normal launch must not create Stronk Pi state in `~/.pi`, `~/.config/pi`, `~/.local/share/pi`, `~/.cache/pi`, or `~/.stronk-pi/home`.
 
 ## Manifest Flow
 

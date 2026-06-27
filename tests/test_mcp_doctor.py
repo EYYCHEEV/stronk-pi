@@ -84,6 +84,46 @@ class McpDoctorTests(unittest.TestCase):
         self.assertTrue(result["symlink"])
         self.assertEqual(result["serverCount"], 1)
 
+    def test_mcp_tools_file_must_be_regular_owned_and_not_writable(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            registry = self.write_registry(
+                tmp,
+                """
+                version = 1
+
+                [servers.example]
+                command = "python3"
+                args = []
+                """,
+            )
+            target = self.write_tools(tmp, "example")
+            linked = tmp / "linked-tools"
+            linked.symlink_to(target)
+            result = guard.validate_mcp_registry(registry, tools_path=linked)
+            self.assertFalse(result["ok"])
+            self.assertIn("must not be a symlink", "\n".join(result["errors"]))
+
+            directory_tools = tmp / "directory-tools"
+            directory_tools.mkdir()
+            result = guard.validate_mcp_registry(registry, tools_path=directory_tools)
+            self.assertFalse(result["ok"])
+            self.assertIn("regular file", "\n".join(result["errors"]))
+
+            target.chmod(0o620)
+            result = guard.validate_mcp_registry(registry, tools_path=target)
+            self.assertFalse(result["ok"])
+            self.assertIn("group-writable", "\n".join(result["errors"]))
+
+            target.chmod(0o602)
+            result = guard.validate_mcp_registry(registry, tools_path=target)
+            self.assertFalse(result["ok"])
+            self.assertIn("world-writable", "\n".join(result["errors"]))
+
+            target.chmod(0o600)
+            result = guard.validate_mcp_registry(registry, tools_path=target)
+            self.assertTrue(result["ok"], result)
+
     def test_missing_selected_env_fails(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -260,6 +300,16 @@ class McpAdapterRuntimeTests(unittest.TestCase):
         (package / "index.ts").write_text("export default function adapter() {}\n", encoding="utf-8")
         return package
 
+    def write_runtime_package(self, root: Path, name: str, version: str) -> Path:
+        package = root / "agent" / "npm" / "node_modules" / name
+        package.mkdir(parents=True)
+        (package / "package.json").write_text(
+            json.dumps({"name": name, "version": version, "pi": {"extensions": ["./index.ts"]}}) + "\n",
+            encoding="utf-8",
+        )
+        (package / "index.ts").write_text("export default function extension() {}\n", encoding="utf-8")
+        return package
+
     def write_runtime_defaults(self, root: Path) -> None:
         target = root / "config" / "defaults.toml"
         target.parent.mkdir(parents=True)
@@ -299,9 +349,13 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             tmp = Path(raw)
             root = tmp / "state"
             project = tmp / "project"
+            home = tmp / "home"
             xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
             project.mkdir()
+            home.mkdir()
             (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
             self.write_runtime_defaults(root)
             adapter = self.write_adapter_package(root)
             registry = self.write_registry(
@@ -326,8 +380,10 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             ):
                 status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
 
-            config_path = root / "agent" / "mcp.json"
+            config_path = guard.project_generated_mcp_config_path(project, root)
             config_text = config_path.read_text(encoding="utf-8")
+            config_mode = config_path.stat().st_mode & 0o777
+            project_mcp_exists = (project / ".mcp.json").is_file()
             launch_args = guard.build_pi_launch_args(
                 plugin_path=root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs",
                 session_dir=root / "agent" / "sessions",
@@ -341,16 +397,176 @@ class McpAdapterRuntimeTests(unittest.TestCase):
         self.assertIn("${STRONKPI_TEST_SECRET}", config_text)
         self.assertIn("--mcp-config", launch_args)
         self.assertIn(str(config_path), launch_args)
+        self.assertEqual(config_path, project.resolve(strict=False) / ".mcp.json")
+        self.assertEqual(config_mode, 0o600)
         self.assertEqual(launch_args.count("--extension"), 2)
         self.assertEqual(str(registry), status["registryPath"])
+        self.assertFalse((root / "agent" / "mcp.json").exists())
+        self.assertTrue(project_mcp_exists)
 
-    def test_prepare_runtime_rejects_project_mcp_configs(self):
+    def test_subagent_runtime_launch_args_include_intercom_extensions(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            self.write_runtime_defaults(root)
+            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
+
+            status = guard.prepare_subagent_runtime(root)
+            inspected = guard.inspect_subagent_runtime(root)
+            launch_args = guard.build_pi_launch_args(
+                plugin_path=root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs",
+                session_dir=root / "agent" / "sessions",
+                subagent_status=status,
+            )
+            bridge_link = root / "agent" / "extensions" / "pi-intercom"
+            bridge_is_symlink = bridge_link.is_symlink()
+            bridge_target = bridge_link.resolve()
+
+        self.assertTrue(status["enabled"])
+        self.assertEqual(status["packages"]["subagents"]["packageName"], "pi-subagents")
+        self.assertEqual(status["packages"]["subagents"]["packageVersion"], "0.22.0")
+        self.assertEqual(status["packages"]["intercom"]["packageName"], "pi-intercom")
+        self.assertEqual(status["packages"]["intercom"]["packageVersion"], "0.6.0")
+        self.assertEqual(status["extensionPaths"], [str(subagents), str(intercom)])
+        self.assertEqual(status["intercomBridgePath"], str(bridge_link))
+        self.assertTrue(status["intercomBridgeLinked"])
+        self.assertTrue(inspected["intercomBridgeLinked"])
+        self.assertTrue(bridge_is_symlink)
+        self.assertEqual(bridge_target, intercom.resolve())
+        self.assertEqual(launch_args.count("--extension"), 3)
+        self.assertIn(str(subagents), launch_args)
+        self.assertIn(str(intercom), launch_args)
+
+    def test_diagnose_json_reports_linked_subagent_runtime(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                }
+            )
+
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi"), "--diagnose", "--json"],
+                cwd=tmp,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+
+            payload = json.loads(proc.stdout)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["effectiveHome"], str(Path(env.get("HOME", str(Path.home()))).expanduser().resolve(strict=False)))
+        self.assertEqual(payload["stateRoot"], str(root))
+        self.assertEqual(payload["configRoot"], str(root / "config"))
+        self.assertEqual(payload["cacheRoot"], str(root / "cache"))
+        self.assertEqual(payload["logRoot"], str(root / "logs"))
+        self.assertEqual(payload["tmpRoot"], str(root / "tmp"))
+        self.assertEqual(payload["agentDir"], str(root / "agent"))
+        self.assertEqual(payload["sessionDir"], str(root / "agent" / "sessions"))
+        self.assertEqual(payload["mcpConfigPath"], str(tmp.resolve(strict=False) / ".mcp.json"))
+        self.assertEqual(payload["intercomBridgePath"], str(root / "agent" / "extensions" / "pi-intercom"))
+        self.assertIn(str(root / "home"), payload["blockedRealHomeWriteRisks"])
+        subagent_runtime = payload["subagentRuntime"]
+        self.assertTrue(subagent_runtime["configured"], subagent_runtime)
+        self.assertTrue(subagent_runtime["enabled"], subagent_runtime)
+        self.assertEqual(subagent_runtime["adapter"], "intercom")
+        self.assertTrue(subagent_runtime["intercomBridgeLinked"], subagent_runtime)
+        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageName"], "pi-subagents")
+        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageVersion"], "0.22.0")
+        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageName"], "pi-intercom")
+        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageVersion"], "0.6.0")
+        self.assertIn(str(subagents), subagent_runtime["extensionPaths"])
+        self.assertIn(str(intercom), subagent_runtime["extensionPaths"])
+
+    def test_subagent_runtime_fails_closed_when_intercom_packages_missing(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            self.write_runtime_defaults(root)
+            inspected = guard.inspect_subagent_runtime(root)
+
+            with self.assertRaisesRegex(guard.StronkPiError, "subagent runtime package missing"):
+                guard.prepare_subagent_runtime(root)
+        missing = {(item["packageName"], item["packageVersion"]) for item in inspected["missingPackages"]}
+        self.assertIn(("pi-subagents", "0.22.0"), missing)
+        self.assertIn(("pi-intercom", "0.6.0"), missing)
+        self.assertFalse(inspected["enabled"])
+        self.assertFalse(inspected["intercomBridgeLinked"])
+
+    def test_generated_subagent_roles_allow_pi_intercom_bridge(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            bridge_path = root / "agent" / "extensions" / "pi-intercom"
+
+            guard.install_bundle_defaults(root=root, dry_run=False)
+            role_text = (root / "agent" / "agents" / "technical-researcher.md").read_text(encoding="utf-8")
+            extensions_line = next(line for line in role_text.splitlines() if line.startswith("extensions: "))
+            extension_items = [item.strip() for item in extensions_line.removeprefix("extensions: ").split(",")]
+
+        self.assertIn("extensions: ", role_text)
+        self.assertIn(str(bridge_path), extension_items)
+        self.assertNotIn("pi-intercom", extension_items)
+
+    def test_prepare_runtime_refreshes_project_mcp_json(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            home = tmp / "home"
+            xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
+            project.mkdir()
+            home.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
+            self.write_runtime_defaults(root)
+            self.write_adapter_package(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.example]
+                command = "python3"
+                args = []
+                """,
+            )
+            self.write_tools(project, "example")
+            (project / ".mcp.json").write_text(
+                '{"mcpServers":{"bypass":{"command":"python3"}}}\n',
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+            generated = json.loads((project / ".mcp.json").read_text(encoding="utf-8"))
+
+        self.assertTrue(status["enabled"])
+        self.assertEqual(status["configPath"], str(project.resolve(strict=False) / ".mcp.json"))
+        self.assertEqual(sorted(generated["mcpServers"].keys()), ["example"])
+        self.assertNotIn("bypass", generated["mcpServers"])
+
+    def test_prepare_runtime_rejects_project_pi_mcp_config(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             root = tmp / "state"
             project = tmp / "project"
             xdg = tmp / "xdg"
             project.mkdir()
+            (project / ".pi").mkdir()
             (xdg / "mcp").mkdir(parents=True)
             self.write_runtime_defaults(root)
             self.write_adapter_package(root)
@@ -365,7 +581,10 @@ class McpAdapterRuntimeTests(unittest.TestCase):
                 """,
             )
             self.write_tools(project, "example")
-            (project / ".mcp.json").write_text('{"mcpServers":{"bypass":{"command":"python3"}}}\n', encoding="utf-8")
+            (project / ".pi" / "mcp.json").write_text(
+                '{"mcpServers":{"bypass":{"command":"python3"}}}\n',
+                encoding="utf-8",
+            )
 
             with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
                 with self.assertRaisesRegex(guard.StronkPiError, "bypass the Stronk selected-server boundary"):
@@ -409,16 +628,23 @@ class McpAdapterRuntimeTests(unittest.TestCase):
         self.assertFalse(status["configured"])
         self.assertFalse(status["enabled"])
         self.assertFalse((root / "agent" / "mcp.json").exists())
+        self.assertFalse((project / ".mcp.json").exists())
 
     def test_stronkpi_entrypoint_launches_with_mcp_adapter(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             root = tmp / "state"
             project = tmp / "project"
+            home = tmp / "home"
             xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
             project.mkdir()
+            home.mkdir()
             (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
             self.write_adapter_package(root)
+            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
             plugin_path = root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs"
             plugin_path.parent.mkdir(parents=True)
             plugin_path.write_text("export default function plugin() {}\n", encoding="utf-8")
@@ -432,6 +658,20 @@ class McpAdapterRuntimeTests(unittest.TestCase):
                         "root = pathlib.Path(os.environ['STRONK_PI_STATE_ROOT'])",
                         "(root / 'launch-argv.json').write_text(json.dumps(sys.argv[1:]) + '\\n', encoding='utf-8')",
                         "(root / 'pi-agent-dir.txt').write_text(os.environ['PI_CODING_AGENT_DIR'] + '\\n', encoding='utf-8')",
+                        "(root / 'child-env.json').write_text(json.dumps({",
+                        "    'HOME': os.environ.get('HOME'),",
+                        "    'XDG_CONFIG_HOME': os.environ.get('XDG_CONFIG_HOME'),",
+                        "    'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME'),",
+                        "    'STRONK_PI_CONFIG_ROOT': os.environ.get('STRONK_PI_CONFIG_ROOT'),",
+                        "    'STRONK_PI_CACHE_ROOT': os.environ.get('STRONK_PI_CACHE_ROOT'),",
+                        "    'STRONK_PI_LOG_ROOT': os.environ.get('STRONK_PI_LOG_ROOT'),",
+                        "    'STRONK_PI_TMP_ROOT': os.environ.get('STRONK_PI_TMP_ROOT'),",
+                        "    'STRONK_PI_MCP_CONFIG_PATH': os.environ.get('STRONK_PI_MCP_CONFIG_PATH'),",
+                        "}) + '\\n', encoding='utf-8')",
+                        "(root / 'subagent-env.json').write_text(json.dumps({",
+                        "    'facade': os.environ.get('STRONK_PI_SUBAGENT_FACADE'),",
+                        "    'adapter': os.environ.get('STRONK_PI_SUBAGENT_ADAPTER'),",
+                        "}) + '\\n', encoding='utf-8')",
                         "(root / 'pi-offline.txt').write_text(os.environ.get('PI_OFFLINE', '') + '\\n', encoding='utf-8')",
                     ]
                 )
@@ -457,7 +697,9 @@ class McpAdapterRuntimeTests(unittest.TestCase):
                 {
                     "STRONK_PI_DEV_OVERRIDES": "1",
                     "STRONKPI_STATE_ROOT": str(root),
+                    "HOME": str(home),
                     "XDG_CONFIG_HOME": str(xdg),
+                    "XDG_CACHE_HOME": str(xdg_cache),
                     "STRONKPI_SMOKE_SECRET": "do-not-write-me",
                     "STRONKPI_NO_NETWORK": "1",
                 }
@@ -473,24 +715,51 @@ class McpAdapterRuntimeTests(unittest.TestCase):
                 check=False,
             )
 
-            config_text = (root / "agent" / "mcp.json").read_text(encoding="utf-8")
+            config_path = guard.project_generated_mcp_config_path(project, root)
+            config_text = config_path.read_text(encoding="utf-8")
             config = json.loads(config_text)
             launch_args = json.loads((root / "launch-argv.json").read_text(encoding="utf-8"))
+            resolved_launch_args = [
+                str(Path(item).resolve()) if isinstance(item, str) and item.startswith("/") else item
+                for item in launch_args
+            ]
             agent_dir_text = (root / "pi-agent-dir.txt").read_text(encoding="utf-8").strip()
+            child_env = json.loads((root / "child-env.json").read_text(encoding="utf-8"))
+            subagent_env = json.loads((root / "subagent-env.json").read_text(encoding="utf-8"))
             offline_text = (root / "pi-offline.txt").read_text(encoding="utf-8").strip()
+            project_mcp_exists = (project / ".mcp.json").is_file()
 
         self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
         self.assertEqual(config["mcpServers"]["example"]["env"]["STRONKPI_SMOKE_SECRET"], "${STRONKPI_SMOKE_SECRET}")
         self.assertEqual(config["mcpServers"]["example"]["env"]["STRONKPI_SMOKE_MODE"], "live")
         self.assertNotIn("do-not-write-me", config_text)
         self.assertEqual(sorted(config["mcpServers"].keys()), ["example"])
-        self.assertEqual(launch_args.count("--extension"), 2)
+        self.assertEqual(launch_args.count("--extension"), 4)
+        self.assertIn(str(subagents), launch_args)
+        self.assertIn(str(intercom), launch_args)
         self.assertIn("--mcp-config", launch_args)
-        self.assertIn(str(root / "agent" / "mcp.json"), launch_args)
+        self.assertIn(str(config_path.resolve()), resolved_launch_args)
         self.assertIn("--offline", launch_args)
+        self.assertEqual(child_env["HOME"], str(home.resolve(strict=False)))
+        self.assertEqual(child_env["XDG_CONFIG_HOME"], str(xdg))
+        self.assertEqual(child_env["XDG_CACHE_HOME"], str(xdg_cache))
+        self.assertEqual(child_env["STRONK_PI_CONFIG_ROOT"], str(root / "config"))
+        self.assertEqual(child_env["STRONK_PI_CACHE_ROOT"], str(root / "cache"))
+        self.assertEqual(child_env["STRONK_PI_LOG_ROOT"], str(root / "logs"))
+        self.assertEqual(child_env["STRONK_PI_TMP_ROOT"], str(root / "tmp"))
+        self.assertEqual(child_env["STRONK_PI_MCP_CONFIG_PATH"], str(config_path))
+        self.assertEqual(subagent_env["facade"], "stronk")
+        self.assertEqual(subagent_env["adapter"], "intercom")
         self.assertEqual(agent_dir_text, str(root / "agent"))
         self.assertEqual(offline_text, "1")
         self.assertEqual(str(registry), str(xdg / "mcp" / "registry.toml"))
+        self.assertFalse((root / "agent" / "mcp.json").exists())
+        self.assertTrue(project_mcp_exists)
+        self.assertFalse((home / ".pi").exists())
+        self.assertFalse((home / ".config" / "pi").exists())
+        self.assertFalse((home / ".local" / "share" / "pi").exists())
+        self.assertFalse((home / ".cache" / "pi").exists())
+        self.assertFalse((root / "home").exists())
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@ This repository provides the public bundle contract: setup and doctor behavior,
 manifest verification, the portable harness, public-safe role templates,
 default role/config/model files, package pins, generated-agent output paths, and
 offline tests. Mutable runtime output is installed under `~/.stronk-pi/`.
+`stronkpi` launches Pi with the operator's real `HOME`.
+Stronk Pi-owned config, generated files, artifacts, logs, caches, temporary
+files, sessions, and role output stay under `~/.stronk-pi/`.
 
 ## Name Map
 
@@ -95,11 +98,19 @@ The canonical runtime state and config root is `~/.stronk-pi/`.
 - `~/.stronk-pi/config/defaults.toml`
 - `~/.stronk-pi/config/roles.toml`
 - `~/.stronk-pi/config/role-templates/*.toml`
+- `~/.stronk-pi/config/pi/web-search.json`
 - generated runtime role Markdown under `~/.stronk-pi/agent/agents/`
 
 It also refreshes setup-managed Pi runtime config under
 `~/.stronk-pi/agent/`, including `settings.json`, `models.json`, and
 `AGENTS.md`.
+Generated MCP adapter config is refreshed as project `.mcp.json` with mode
+`0600` and is passed to Pi through `--mcp-config`.
+The source of truth remains the operator MCP registry plus project `.mcp-tools`;
+`.mcp.json` is the Claude Code-compatible generated artifact.
+Runtime sessions use `~/.stronk-pi/agent/sessions/`.
+Stronk-owned logs, caches, and temporary files use `~/.stronk-pi/logs/`,
+`~/.stronk-pi/cache/`, and `~/.stronk-pi/tmp/`.
 The public default coding model is `kimi-coding/kimi-for-coding` with Pi
 `defaultThinkingLevel` set to `xhigh`.
 The default `kimi-coding` provider is Pi's built-in Kimi Code provider.
@@ -187,14 +198,26 @@ managed runtime config, and installs or refreshes:
 
 - verified plugin artifacts under `~/.stronk-pi/artifacts/`
 
+If an old development install still has `~/.stronk-pi/home`, inspect the cleanup
+plan before applying it:
+
+```sh
+STRONKPI_NO_NETWORK=1 stronkpi-setup cleanup-private-home --dry-run --json
+```
+
+Only run `--apply` after reviewing the dry-run output.
 Private local preferences belong in `~/.stronk-pi/config/roles.local.toml`.
 Generated role Markdown is runtime output, not tracked source.
 
 ## State And Credentials
 
-Mutable runtime state belongs under the user-owned Stronk Pi state root. Provider
-credentials are read from environment variables only. Diagnostics redact
-secret-like keys and values.
+Mutable Stronk Pi runtime state belongs under the user-owned Stronk Pi state
+root, `~/.stronk-pi/`.
+The launched Pi process inherits the operator's real `HOME`, so selected tools
+can discover normal user configuration such as Git, GitHub CLI, SSH, cloud CLI,
+and MCP registry files.
+Stronk Pi does not create normal-launch state in `~/.pi`, `~/.config/pi`, `~/.local/share/pi`, `~/.cache/pi`, or `~/.stronk-pi/home`.
+Diagnostics redact secret-like keys and values.
 
 ## Security Posture
 
