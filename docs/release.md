@@ -58,6 +58,32 @@ bin/stronkpi --diagnose --json
 Back up live `~/.stronk-pi` managed files before the non-dry-run update when
 operator state may matter.
 
+## Runtime State Validation
+
+Before manual testing from a new shell, refresh active installed artifacts and
+managed runtime config:
+
+```bash
+STRONKPI_NO_NETWORK=1 ./install.sh --prefix "$HOME/.local"
+STRONKPI_NO_NETWORK=1 bin/stronkpi-setup refresh-config --json
+```
+
+Then verify the installed wrapper and state-root split:
+
+```bash
+command -v stronkpi
+STRONKPI_NO_NETWORK=1 stronkpi --validate-only
+STRONKPI_NO_NETWORK=1 stronkpi --diagnose --json >/tmp/stronkpi-diagnose.json
+STRONKPI_NO_NETWORK=1 stronkpi-setup cleanup-private-home --dry-run --json >/tmp/stronkpi-cleanup.json
+python3 -m unittest tests/test_public_surface.py tests/test_plugin_state_root.py
+```
+
+The diagnose output should show the operator's real `effectiveHome` and
+Stronk-owned paths under `~/.stronk-pi`.
+When `.mcp-tools` selects servers, launch should refresh project `.mcp.json`
+and pass that file through `--mcp-config`.
+Do not run cleanup with `--apply` unless the dry-run has been reviewed.
+
 ## Rollback
 
 Before plugin import, close or revert the setup version PR.

@@ -101,6 +101,38 @@ class ToolGuardTests(unittest.TestCase):
                 self.assertFalse(result["allow"])
                 self.assertIn("unknown tool denied by default", result["reason"])
 
+    def test_raw_subagent_is_denied_while_stronk_subagent_is_allowed(self):
+        raw = guard.guarded_tool_decision("subagent", {"action": "spawn"}, ROOT, {})
+        guarded = guard.guarded_tool_decision("stronk_subagent", {"action": "status"}, ROOT, {})
+
+        self.assertFalse(raw["allow"])
+        self.assertIn("raw subagent tool denied", raw["reason"])
+        self.assertTrue(guarded["allow"])
+
+    def test_stronk_subagent_cwd_override_is_denied(self):
+        for payload in (
+            {"action": "spawn", "role": "executor", "task": "inspect", "cwd": "/Users/example"},
+            {"action": "spawn", "role": "executor", "task": "inspect", "nested": {"cwd": "/"}},
+            {"action": "wait_all", "childIds": ["sp-child-1"], "meta": [{"cwd": "/"}]},
+            {"action": "close_all", "childIds": [{"cwd": "/"}]},
+            {"action": "read_output", "outputHandle": "subagent-output-00000000-0000-0000-0000-000000000000", "meta": [{"cwd": "/"}]},
+        ):
+            with self.subTest(payload=payload):
+                result = guard.guarded_tool_decision("stronk_subagent", payload, ROOT, {})
+                self.assertFalse(result["allow"])
+                self.assertIn("stronk_subagent cwd override denied", result["reason"])
+
+    def test_stronk_subagent_recursive_overrides_are_denied(self):
+        for payload, key in (
+            ({"action": "wait_all", "childIds": ["sp-child-1"], "meta": [{"model": "override"}]}, "model"),
+            ({"action": "close_all", "childIds": ["sp-child-1"], "meta": {"tools": ["bash"]}}, "tools"),
+            ({"action": "read_output", "outputHandle": "subagent-output-00000000-0000-0000-0000-000000000000", "outputMode": "raw"}, "outputMode"),
+        ):
+            with self.subTest(payload=payload):
+                result = guard.guarded_tool_decision("stronk_subagent", payload, ROOT, {})
+                self.assertFalse(result["allow"])
+                self.assertIn(f"stronk_subagent override denied: {key}", result["reason"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
