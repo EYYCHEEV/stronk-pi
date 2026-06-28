@@ -61,7 +61,7 @@ class ReleaseScriptTests(unittest.TestCase):
             guard_text = (tmp / "lib" / "stronk-pi-guard.py").read_text(encoding="utf-8")
             plugin = json.loads((tmp / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
             self.assertIn('VERSION = "0.2.0"', guard_text)
-            self.assertIn('DEFAULT_PLUGIN_VERSION = "0.2.0"', guard_text)
+            self.assertIn('DEFAULT_PLUGIN_VERSION = "0.2.1"', guard_text)
             self.assertEqual(plugin["version"], "0.2.0")
 
     def test_import_plugin_release_updates_distribution_surfaces(self):
