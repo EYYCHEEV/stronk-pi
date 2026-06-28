@@ -16,11 +16,11 @@ ARTIFACT_DIR = ROOT / "tests" / "fixtures" / "artifacts"
 MANIFEST_DIR = ROOT / "tests" / "fixtures" / "manifests"
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 PLUGIN_REPO = "EYYCHEEV/stronk-pi-plugin"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.2.1"
 PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
 PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
 SUBAGENTS_REPO = "EYYCHEEV/stronk-pi-subagents"
-SUBAGENTS_VERSION = "0.22.0-stronk.3"
+SUBAGENTS_VERSION = "0.22.0-stronk.4"
 SUBAGENTS_TAG = f"stronk-pi-subagents-v{SUBAGENTS_VERSION}"
 SUBAGENTS_ASSET = f"stronk-pi-subagents-{SUBAGENTS_VERSION}.tgz"
 SUBAGENTS_UPSTREAM_REPO = "nicobailon/pi-subagents"
@@ -225,7 +225,7 @@ def main() -> None:
             "package/src/agents/user-agent-dir.ts": b"export function resolveUserAgentDir() { return process.env.PI_CODING_AGENT_DIR || ''; }\n",
             "package/agents/delegate.md": b"---\nname: delegate\ndescription: delegate\n---\n",
             "package/agents/worker.md": b"---\nname: worker\ndescription: worker\n---\n",
-            "package/skills/pi-subagents/SKILL.md": b"---\ndescription: subagents\n---\n",
+            "package/skills/stronkpi-agents/SKILL.md": b"---\ndescription: Stronk Pi subagent swarm orchestration\n---\n",
         },
     )
     write_tgz(

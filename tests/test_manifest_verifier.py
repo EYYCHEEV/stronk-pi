@@ -211,6 +211,75 @@ class ManifestVerifierTests(unittest.TestCase):
         with self.assertRaisesRegex(guard.StronkPiError, text):
             guard.verify_manifest(self.manifest(name))
 
+    def write_subagents_archive(self, path: Path, *, version: str, skill_name: str) -> None:
+        files = {
+            "package/package.json": json.dumps(
+                {
+                    "name": "stronk-pi-subagents",
+                    "version": version,
+                    "pi": {"extensions": ["./src/extension/index.ts"]},
+                },
+                sort_keys=True,
+            ).encode() + b"\n",
+            "package/src/extension/index.ts": b"export default function subagents() {}\n",
+            "package/src/agents/agents.ts": b"export function discoverAgents() { return []; }\n",
+            "package/src/agents/skills.ts": b"export function discoverAvailableSkills() { return []; }\n",
+            "package/src/agents/user-agent-dir.ts": b"export function resolveUserAgentDir() { return ''; }\n",
+            "package/agents/delegate.md": b"---\nname: delegate\ndescription: delegate\n---\n",
+            "package/agents/worker.md": b"---\nname: worker\ndescription: worker\n---\n",
+            f"package/skills/{skill_name}/SKILL.md": b"---\ndescription: subagents\n---\n",
+        }
+        with tarfile.open(path, "w:gz") as archive:
+            for name, payload in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+
+    def write_subagents_manifest(self, *, archive_path: Path, version: str) -> Path:
+        manifest = json.loads(self.manifest("good-local.json").read_text(encoding="utf-8"))
+        asset = archive_path.name
+        sha = guard.sha256_file(archive_path)
+        item = manifest["artifacts"][1]
+        item["version"] = version
+        item["immutableTag"] = f"stronk-pi-subagents-v{version}"
+        item["releaseUrl"] = f"https://github.com/EYYCHEEV/stronk-pi-subagents/releases/tag/stronk-pi-subagents-v{version}"
+        item["artifactPath"] = f"../artifacts/{asset}"
+        item["sha256"] = sha
+        item["byteSize"] = archive_path.stat().st_size
+        item["attestation"] = f"github-attestation:EYYCHEEV/stronk-pi-subagents/{asset}@sha256:{sha}"
+        item["provenance"]["immutableTag"] = item["immutableTag"]
+        item["provenance"]["workflowRunId"] = item["workflowRunId"]
+        manifest["bundle"]["packagePins"]["subagents"]["version"] = version
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=self.manifest("good-local.json").parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            return Path(handle.name)
+
+    def test_subagents_stronkpi_skill_path_is_required_after_legacy_release(self):
+        version = "0.22.0-stronk.4-test"
+        asset = f"stronk-pi-subagents-{version}.tgz"
+        archive_path = ROOT / "tests" / "fixtures" / "artifacts" / asset
+        self.write_subagents_archive(archive_path, version=version, skill_name="stronkpi-agents")
+        manifest_path = self.write_subagents_manifest(archive_path=archive_path, version=version)
+        try:
+            results = guard.verify_manifest(manifest_path)
+            self.assertEqual(results[1].version, version)
+        finally:
+            manifest_path.unlink(missing_ok=True)
+            archive_path.unlink(missing_ok=True)
+
+    def test_subagents_legacy_skill_path_is_rejected_after_legacy_release(self):
+        version = "0.22.0-stronk.4-test"
+        asset = f"stronk-pi-subagents-{version}.tgz"
+        archive_path = ROOT / "tests" / "fixtures" / "artifacts" / asset
+        self.write_subagents_archive(archive_path, version=version, skill_name="pi-subagents")
+        manifest_path = self.write_subagents_manifest(archive_path=archive_path, version=version)
+        try:
+            with self.assertRaisesRegex(guard.StronkPiError, "stronkpi-agents"):
+                guard.verify_manifest(manifest_path)
+        finally:
+            manifest_path.unlink(missing_ok=True)
+            archive_path.unlink(missing_ok=True)
+
     def test_checksum_mismatch_fails(self):
         self.assert_manifest_fails("checksum-mismatch.json", "checksum mismatch")
 

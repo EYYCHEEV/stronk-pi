@@ -28,7 +28,7 @@ def load_guard():
 
 guard = load_guard()
 SUBAGENTS_PACKAGE = "stronk-pi-subagents"
-SUBAGENTS_VERSION = "0.22.0-stronk.3"
+SUBAGENTS_VERSION = "0.22.0-stronk.4"
 
 
 class McpDoctorTests(unittest.TestCase):
@@ -318,7 +318,7 @@ class McpAdapterRuntimeTests(unittest.TestCase):
                 "src/agents/user-agent-dir.ts": "export function resolveUserAgentDir() { return ''; }\n",
                 "agents/delegate.md": "---\nname: delegate\ndescription: delegate\n---\n",
                 "agents/worker.md": "---\nname: worker\ndescription: worker\n---\n",
-                "skills/pi-subagents/SKILL.md": "---\ndescription: subagents\n---\n",
+                "skills/stronkpi-agents/SKILL.md": "---\ndescription: Stronk Pi subagent swarm orchestration\n---\n",
             }
             for relative, content in required_files.items():
                 target = package / relative

@@ -26,7 +26,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
@@ -40,11 +40,11 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
     Path(".agents") / "roles" / "stronk",
     Path(".agents") / "codex" / "roles" / "stronk",
 )
-DEFAULT_PLUGIN_VERSION = "0.2.0"
+DEFAULT_PLUGIN_VERSION = "0.2.1"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 DEFAULT_PACKAGE_PINS = {
     "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),
-    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.3"),
+    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.4"),
     "intercom": ("pi-intercom", "0.6.0"),
 }
 SUBAGENT_RUNTIME_PACKAGE_KEYS = ("subagents", "intercom")
@@ -213,7 +213,6 @@ PACKAGE_ARCHIVE_REQUIRED_MEMBERS = {
         "package/src/agents/user-agent-dir.ts",
         "package/agents/delegate.md",
         "package/agents/worker.md",
-        "package/skills/pi-subagents/SKILL.md",
     ),
 }
 RUNTIME_PACKAGE_REQUIRED_PATHS = {
@@ -224,9 +223,11 @@ RUNTIME_PACKAGE_REQUIRED_PATHS = {
         "src/agents/user-agent-dir.ts",
         "agents/delegate.md",
         "agents/worker.md",
-        "skills/pi-subagents/SKILL.md",
     ),
 }
+SUBAGENTS_LEGACY_PARENT_SKILL_VERSION = "0.22.0-stronk.3"
+SUBAGENTS_LEGACY_PARENT_SKILL = "pi-subagents"
+SUBAGENTS_PARENT_SKILL = "stronkpi-agents"
 PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
 IMAGE_PREFLIGHT_HANDLE_RE = re.compile(r"^image-preflight-[0-9A-Fa-f-]{36}$")
 ENV_NAMES = (
@@ -2186,6 +2187,28 @@ def runtime_package_candidate_paths(root: Path, name: str, version: str) -> list
     ]
 
 
+def subagents_parent_skill_name(version: str) -> str:
+    if version == SUBAGENTS_LEGACY_PARENT_SKILL_VERSION:
+        return SUBAGENTS_LEGACY_PARENT_SKILL
+    return SUBAGENTS_PARENT_SKILL
+
+
+def package_archive_required_members(name: str, version: str) -> tuple[str, ...]:
+    members = PACKAGE_ARCHIVE_REQUIRED_MEMBERS.get(name, ())
+    if name != "stronk-pi-subagents":
+        return members
+    skill_name = subagents_parent_skill_name(version)
+    return (*members, f"package/skills/{skill_name}/SKILL.md")
+
+
+def runtime_package_required_paths(name: str, version: str) -> tuple[str, ...]:
+    paths = RUNTIME_PACKAGE_REQUIRED_PATHS.get(name, ())
+    if name != "stronk-pi-subagents":
+        return paths
+    skill_name = subagents_parent_skill_name(version)
+    return (*paths, f"skills/{skill_name}/SKILL.md")
+
+
 def matching_package_root(path: Path, *, name: str, version: str) -> bool:
     package_json = path / "package.json"
     if not package_json.is_file():
@@ -2196,7 +2219,7 @@ def matching_package_root(path: Path, *, name: str, version: str) -> bool:
         return False
     if package_data.get("name") != name or package_data.get("version") != version:
         return False
-    for relative in RUNTIME_PACKAGE_REQUIRED_PATHS.get(name, ()):
+    for relative in runtime_package_required_paths(name, version):
         if not (path / relative).is_file():
             return False
     return True
@@ -2511,7 +2534,7 @@ def validate_archive(path: Path, *, expected_name: str, expected_version: str) -
             raise StronkPiError(f"artifact package name must be {expected_name}")
         if package_json.get("version") != expected_version:
             raise StronkPiError(f"artifact package version must be {expected_version}")
-        missing_members = sorted(set(PACKAGE_ARCHIVE_REQUIRED_MEMBERS.get(expected_name, ())) - member_names)
+        missing_members = sorted(set(package_archive_required_members(expected_name, expected_version)) - member_names)
         if missing_members:
             raise StronkPiError(
                 f"artifact {expected_name} missing required package content: "
