@@ -2,24 +2,24 @@
   "artifacts": [
     {
       "artifactPath": "../artifacts/wrong-package-identity.tgz",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.1.tgz@sha256:45eeb2cba2321fcb01cd6876dcbdd4828375e3c2697263c897d54d3291cb4505",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.2.tgz@sha256:d0482963d01d2534b5345c12523ab42afadf60a88528c237d89b5e0c58c3a801",
       "byteSize": 295,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
-      "immutableTag": "stronk-pi-plugin-v0.2.1",
+      "immutableTag": "stronk-pi-plugin-v0.2.2",
       "name": "stronk-pi-plugin",
       "provenance": {
-        "immutableTag": "stronk-pi-plugin-v0.2.1",
+        "immutableTag": "stronk-pi-plugin-v0.2.2",
         "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
         "workflowRunId": "fixture-run-1"
       },
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.1",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.2",
       "sbom": "fixture-sbom",
-      "sha256": "45eeb2cba2321fcb01cd6876dcbdd4828375e3c2697263c897d54d3291cb4505",
+      "sha256": "d0482963d01d2534b5345c12523ab42afadf60a88528c237d89b5e0c58c3a801",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
       "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "workflowRunId": "fixture-run-1"
     },
     {
