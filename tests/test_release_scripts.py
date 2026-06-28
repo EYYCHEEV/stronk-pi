@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -127,6 +128,65 @@ class ReleaseScriptTests(unittest.TestCase):
             self.assertIn('DEFAULT_PLUGIN_VERSION = "0.2.0"', guard_text)
             self.assertIn("stronk-pi-plugin-0.2.0/package/src/index.mjs", roles_text)
             self.assertIn('PLUGIN_VERSION = "0.2.0"', fixtures_text)
+
+    def test_offline_release_scripts_scrub_inherited_state_root_env(self):
+        """Lock in that release/offline scripts scrub inherited Stronk state-root/dev-override
+        env so release checks start from a scrubbed temp home and temp state root."""
+        shared_scrub_line = (
+            "unset STRONKPI_STATE_ROOT STRONK_PI_STATE_ROOT "
+            "STRONKPI_DEV_OVERRIDES STRONK_PI_DEV_OVERRIDES STRONKPI_SETUP_ROOT"
+        )
+        for rel in ("tests/run_offline.sh", "scripts/verify-release-candidate.sh"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            with self.subTest(script=rel):
+                self.assertIn("STRONKPI_NO_NETWORK=1", text)
+                self.assertIn(shared_scrub_line, text, f"{rel} must scrub state-root env")
+                # The broad scrub loop must target all three control-plane prefixes.
+                for prefix in ("STRONK_", "STRONKPI_", "PI_"):
+                    self.assertIn(prefix, text, f"{rel} must scrub {prefix}* prefix")
+
+    def test_polluted_inherited_state_root_env_cannot_redirect_state_root_sensitive_test(self):
+        """Regression: an inherited polluted Stronk state-root + dev-override env must not
+        redirect a state-root-sensitive test's stronkpi-setup writes outside its temp root.
+        The StronkEnvIsolationMixin scrubs inherited STRONK_*/STRONKPI_*/PI_* env around each
+        test, so a live session's state root cannot disagree with a temp root or redirect
+        stronkpi-setup writes. Spawning a single state-root-sensitive unittest (not the full
+        suite) avoids run_offline.sh recursion while exercising the mixin under attack.
+        """
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            escape_home = tmp / "escape-home"
+            escape_state = escape_home / ".stronk-pi"
+            escape_home.mkdir()
+            env = dict(os.environ)
+            env.update(
+                {
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(escape_state),
+                    "STRONK_PI_STATE_ROOT": str(escape_state),
+                }
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "-q",
+                    "tests.test_manifest_verifier.ManifestVerifierTests."
+                    "test_refresh_config_command_installs_runtime_settings",
+                ],
+                cwd=ROOT,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertFalse(
+                escape_state.exists(),
+                "polluted inherited state root redirected stronkpi-setup writes outside temp",
+            )
 
 
 if __name__ == "__main__":

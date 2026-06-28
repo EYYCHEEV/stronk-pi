@@ -35,7 +35,60 @@ PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
 PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
 
 
-class ManifestVerifierTests(unittest.TestCase):
+# Inherited Stronk Pi control-plane environment variables that can redirect state-root
+# resolution or change harness behavior. State-root-sensitive tests scrub these around
+# each test so a polluted live-session shell cannot redirect writes outside a temp state root
+# or disagree with a test-set temp state root.
+STRONK_INHERITED_ENV_PREFIXES = ("STRONK_", "STRONKPI_", "PI_")
+
+
+def snapshot_and_scrub_inherited_stronk_env() -> dict[str, str]:
+    """Remove inherited STRONK_/STRONKPI_/PI_ env vars; return the snapshot to restore."""
+    snapshot = {
+        name: value
+        for name, value in os.environ.items()
+        if name.startswith(STRONK_INHERITED_ENV_PREFIXES)
+    }
+    for name in snapshot:
+        os.environ.pop(name, None)
+    return snapshot
+
+
+def restore_inherited_stronk_env(snapshot: dict[str, str]) -> None:
+    for name in list(os.environ):
+        if name.startswith(STRONK_INHERITED_ENV_PREFIXES):
+            os.environ.pop(name, None)
+    os.environ.update(snapshot)
+
+
+class StronkEnvIsolationMixin:
+    """Scrub inherited Stronk control-plane env around each test (restored in tearDown)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._stronk_env_snapshot = snapshot_and_scrub_inherited_stronk_env()
+
+    def tearDown(self) -> None:
+        restore_inherited_stronk_env(self._stronk_env_snapshot)
+        super().tearDown()
+
+
+def write_subagents_runtime_package(state: Path) -> Path:
+    """Write a valid stronk-pi-subagents runtime package under state/artifacts and return its root."""
+    name, version = guard.DEFAULT_PACKAGE_PINS["subagents"]
+    package = state / "artifacts" / f"{name}-{version}" / "package"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text(
+        json.dumps({"name": name, "version": version}) + "\n", encoding="utf-8"
+    )
+    for relative in guard.runtime_package_required_paths(name, version):
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# runtime\n", encoding="utf-8")
+    return package
+
+
+class ManifestVerifierTests(StronkEnvIsolationMixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         subprocess.run([sys.executable, str(ROOT / "tests" / "make_fixtures.py")], check=True)
@@ -575,10 +628,22 @@ class ManifestVerifierTests(unittest.TestCase):
             state = tmp / "state"
             user_skills = home / ".agents" / "skills"
             repo_skills = project / ".agents" / "skills"
+            subagents_name, subagents_version = guard.DEFAULT_PACKAGE_PINS["subagents"]
+            subagents_package = state / "artifacts" / f"{subagents_name}-{subagents_version}" / "package"
+            subagents_skills = subagents_package / "skills"
             (user_skills / "user-skill").mkdir(parents=True)
             (repo_skills / "repo-skill").mkdir(parents=True)
             (user_skills / "user-skill" / "SKILL.md").write_text("# user\n", encoding="utf-8")
             (repo_skills / "repo-skill" / "SKILL.md").write_text("# repo\n", encoding="utf-8")
+            (subagents_package / "package.json").parent.mkdir(parents=True)
+            (subagents_package / "package.json").write_text(
+                json.dumps({"name": subagents_name, "version": subagents_version}) + "\n",
+                encoding="utf-8",
+            )
+            for relative in guard.runtime_package_required_paths(subagents_name, subagents_version):
+                target = subagents_package / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# runtime\n", encoding="utf-8")
             try:
                 os.environ["HOME"] = str(home)
                 os.chdir(project)
@@ -596,6 +661,7 @@ class ManifestVerifierTests(unittest.TestCase):
                 [
                     {"path": str(repo_skills.resolve()), "scope": "repo"},
                     {"path": str(user_skills.resolve()), "scope": "user"},
+                    {"path": str(subagents_skills.resolve()), "scope": "system"},
                 ],
             )
 
@@ -613,6 +679,155 @@ class ManifestVerifierTests(unittest.TestCase):
         self.assertIn("/tmp/project/.agents/skills", launch_args)
         self.assertIn("/tmp/home/.agents/skills", launch_args)
         self.assertEqual(launch_args.count("--skill"), 2)
+
+    def test_harness_payload_skill_roots_include_system_skill_roots(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            state = tmp / "state"
+            package = write_subagents_runtime_package(state)
+            system_skills = (package / "skills").resolve(strict=False)
+            payload = guard.harness_payload(state, {"changed": []})
+            roots = payload["skillRoots"]
+            self.assertTrue(
+                any(
+                    item["scope"] == "system" and item["path"] == str(system_skills)
+                    for item in roots
+                ),
+                f"system skill root missing from payload skillRoots: {roots}",
+            )
+
+    def test_pi_launch_args_receive_system_skill_roots_from_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            state = tmp / "state"
+            package = write_subagents_runtime_package(state)
+            system_skills = (package / "skills").resolve(strict=False)
+            skill_roots = guard.runtime_skill_roots(state)
+            self.assertTrue(
+                any(
+                    item["scope"] == "system" and item["path"] == str(system_skills)
+                    for item in skill_roots
+                )
+            )
+            launch_args = guard.build_pi_launch_args(
+                plugin_path=Path("/tmp/plugin/src/index.mjs"),
+                session_dir=Path("/tmp/session"),
+                skill_roots=skill_roots,
+            )
+            self.assertIn(str(system_skills), launch_args)
+            self.assertGreaterEqual(launch_args.count("--skill"), 1)
+            self.assertLess(launch_args.index("--no-skills"), launch_args.index("--skill"))
+
+    def test_runtime_skill_roots_reject_symlinked_package_root_escaping_state_root(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            state = tmp / "state"
+            name, version = guard.DEFAULT_PACKAGE_PINS["subagents"]
+            external_pkg = tmp / "external-package" / "package"
+            external_pkg.mkdir(parents=True)
+            (external_pkg / "package.json").write_text(
+                json.dumps({"name": name, "version": version}) + "\n", encoding="utf-8"
+            )
+            for relative in guard.runtime_package_required_paths(name, version):
+                target = external_pkg / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# runtime\n", encoding="utf-8")
+            candidate = state / "artifacts" / f"{name}-{version}" / "package"
+            candidate.parent.mkdir(parents=True)
+            candidate.symlink_to(external_pkg, target_is_directory=True)
+            with self.assertRaisesRegex(guard.StronkPiError, "escapes state root"):
+                guard.runtime_skill_roots(state)
+
+    def test_runtime_skill_roots_reject_escaping_skills_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp_name:
+            tmp = Path(tmp_name)
+            state = tmp / "state"
+            name, version = guard.DEFAULT_PACKAGE_PINS["subagents"]
+            package = state / "artifacts" / f"{name}-{version}" / "package"
+            package.mkdir(parents=True)
+            (package / "package.json").write_text(
+                json.dumps({"name": name, "version": version}) + "\n", encoding="utf-8"
+            )
+            required = guard.runtime_package_required_paths(name, version)
+            for relative in required:
+                if relative.startswith("skills/"):
+                    continue
+                target = package / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# runtime\n", encoding="utf-8")
+            skill_relative = next(relative for relative in required if relative.startswith("skills/"))
+            escape = tmp / "escape-skills"
+            inner = Path(skill_relative).relative_to(Path("skills"))
+            (escape / inner.parent).mkdir(parents=True, exist_ok=True)
+            (escape / inner).write_text("# escape\n", encoding="utf-8")
+            (package / "skills").symlink_to(escape, target_is_directory=True)
+            with self.assertRaisesRegex(guard.StronkPiError, "escapes owner root"):
+                guard.runtime_skill_roots(state)
+
+    def test_harness_environment_strips_injection_prone_env_vars(self):
+        injection_vars = {
+            "NODE_OPTIONS": "--require /tmp/evil.js",
+            "NODE_PATH": "/tmp/evil-node",
+            "NODE_EXTRA_CA_CERTS": "/tmp/evil-ca.pem",
+            "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+            "DYLD_INSERT_LIBRARIES": "/tmp/evil.dylib",
+            "LD_PRELOAD": "/tmp/evil.so",
+            "PYTHONPATH": "/tmp/evil-py",
+            "PYTHONSTARTUP": "/tmp/evil-startup.py",
+            "PYTHONHOME": "/tmp/evil-pyhome",
+            "NPM_CONFIG_PREFIX": "/tmp/evil-npm",
+            "BUN_CONFIG": "/tmp/evil-bun",
+        }
+        benign_name = "HARMLESS_HARNESS_TEST_MARKER"
+        saved = {name: os.environ.get(name) for name in injection_vars}
+        saved[benign_name] = os.environ.get(benign_name)
+        try:
+            os.environ.update(injection_vars)
+            os.environ[benign_name] = "kept"
+            with tempfile.TemporaryDirectory() as tmp_name:
+                env = guard.harness_environment(Path(tmp_name) / "state")
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        for name in injection_vars:
+            self.assertNotIn(name, env, f"injection-prone env var leaked into harness env: {name}")
+        self.assertEqual(env.get(benign_name), "kept", "benign inherited env var should survive scrub")
+
+    def test_runtime_package_pin_rejects_floating_and_malicious_overrides(self):
+        name, _ = guard.DEFAULT_PACKAGE_PINS["subagents"]
+        self.assertEqual(guard.runtime_package_pin({}, "subagents")[0], name)
+        self.assertEqual(
+            guard.runtime_package_pin(
+                {"package_pins": {"subagents": {"name": name, "version": "9.9.9"}}}, "subagents"
+            ),
+            (name, "9.9.9"),
+        )
+        for bad_version in ("latest", "^1.0.0", "1.x", "HEAD"):
+            with self.subTest(version=bad_version):
+                with self.assertRaisesRegex(guard.StronkPiError, "floating|pin"):
+                    guard.runtime_package_pin(
+                        {"package_pins": {"subagents": {"name": name, "version": bad_version}}},
+                        "subagents",
+                    )
+        for bad_version in (">=2.0", "a b"):
+            with self.subTest(version=bad_version):
+                with self.assertRaisesRegex(guard.StronkPiError, "invalid version"):
+                    guard.runtime_package_pin(
+                        {"package_pins": {"subagents": {"name": name, "version": bad_version}}},
+                        "subagents",
+                    )
+        for bad_name in ("../escape", "name with space", "name;rm", "name\ninject"):
+            with self.subTest(name=bad_name):
+                with self.assertRaisesRegex(guard.StronkPiError, "invalid name"):
+                    guard.runtime_package_pin(
+                        {"package_pins": {"subagents": {"name": bad_name, "version": "1.0.0"}}},
+                        "subagents",
+                    )
+        with self.assertRaisesRegex(guard.StronkPiError, "unknown runtime package pin"):
+            guard.runtime_package_pin({}, "nope")
 
     def test_harness_environment_uses_runtime_harness_defaults(self):
         with tempfile.TemporaryDirectory() as tmp_name:

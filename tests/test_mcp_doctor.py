@@ -31,7 +31,44 @@ SUBAGENTS_PACKAGE = "stronk-pi-subagents"
 SUBAGENTS_VERSION = "0.22.0-stronk.4"
 
 
-class McpDoctorTests(unittest.TestCase):
+# Inherited Stronk Pi control-plane environment variables that can redirect state-root
+# resolution or change harness behavior. State-root-sensitive tests scrub these around each
+# test so a polluted live-session shell cannot redirect writes outside a temp state root.
+STRONK_INHERITED_ENV_PREFIXES = ("STRONK_", "STRONKPI_", "PI_")
+
+
+def snapshot_and_scrub_inherited_stronk_env() -> dict[str, str]:
+    """Remove inherited STRONK_/STRONKPI_/PI_ env vars; return the snapshot to restore."""
+    snapshot = {
+        name: value
+        for name, value in os.environ.items()
+        if name.startswith(STRONK_INHERITED_ENV_PREFIXES)
+    }
+    for name in snapshot:
+        os.environ.pop(name, None)
+    return snapshot
+
+
+def restore_inherited_stronk_env(snapshot: dict[str, str]) -> None:
+    for name in list(os.environ):
+        if name.startswith(STRONK_INHERITED_ENV_PREFIXES):
+            os.environ.pop(name, None)
+    os.environ.update(snapshot)
+
+
+class StronkEnvIsolationMixin:
+    """Scrub inherited Stronk control-plane env around each test (restored in tearDown)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._stronk_env_snapshot = snapshot_and_scrub_inherited_stronk_env()
+
+    def tearDown(self) -> None:
+        restore_inherited_stronk_env(self._stronk_env_snapshot)
+        super().tearDown()
+
+
+class McpDoctorTests(StronkEnvIsolationMixin, unittest.TestCase):
     def write_registry(self, directory: Path, body: str) -> Path:
         registry = directory / "registry.toml"
         registry.write_text(body.strip() + "\n", encoding="utf-8")
@@ -281,7 +318,7 @@ class McpDoctorTests(unittest.TestCase):
         self.assertEqual(payload["mcpRegistry"]["serverCount"], 1)
 
 
-class McpAdapterRuntimeTests(unittest.TestCase):
+class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
     def write_registry(self, directory: Path, body: str) -> Path:
         registry = directory / "registry.toml"
         registry.write_text(body.strip() + "\n", encoding="utf-8")

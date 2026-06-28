@@ -26,7 +26,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
@@ -182,6 +182,37 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[/\\]")
 MCP_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Runtime package pins resolved from defaults.toml or DEFAULT_PACKAGE_PINS must be
+# concrete (non-floating) and syntactically constrained so a malicious defaults file
+# cannot redirect runtime discovery to an arbitrary package name or moving version.
+PACKAGE_PIN_NAME_RE = re.compile(r"^(?:@[A-Za-z0-9][A-Za-z0-9._-]*/)?[A-Za-z0-9][A-Za-z0-9._-]*$")
+PACKAGE_PIN_VERSION_RE = re.compile(r"^[A-Za-z0-9.+~-]+$")
+# Environment variables that can inject code or rewrite trust roots into a spawned
+# Node/Python/Bun Pi runtime. These are stripped from harness_environment() so an
+# inherited shell session cannot tamper with the live launch.
+HARNESS_ENV_INJECTION_DENY_EXACT = frozenset(
+    {
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+        "NODE_REPL_EXTERNAL_MODULE",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONHOME",
+        "PYTHONINSPECT",
+        "ELECTRON_RUN_AS_NODE",
+        "ELECTRON_ENABLE_LOGGING",
+        "ELECTRON_OVERRIDE_DIST_PATH",
+    }
+)
+HARNESS_ENV_INJECTION_DENY_PREFIXES = (
+    "DYLD_",
+    "LD_",
+    "NPM_CONFIG_",
+    "BUN_",
+    "NODE_OPTIONS_",
+)
 PROJECT_GENERATED_MCP_CONFIG_RELATIVE = Path(".mcp.json")
 PROJECT_MCP_BYPASS_CONFIG_RELATIVES = (Path(".pi") / "mcp.json",)
 DEFAULT_NETWORK_URL = "https://github.com/EYYCHEEV/stronk-pi"
@@ -333,6 +364,25 @@ DENY_BASH_PATTERNS = (
     re.compile(r"\bgit\s+clean\s+-[^\n;|&]*[df][^\n;|&]*\b"),
 )
 SENSITIVE_PATH_PARTS = {".env", ".ssh", ".gnupg", ".aws", ".config/mcp", ".codex", ".claude"}
+# Blocked original upstream Pi/Pi-subagent repositories. The Stronk Pi upstream-boundary
+# policy forbids creating any public activity (PRs, issues, comments, reviews, pushes) in
+# these repos; the guard safety screen enforces that policy mechanically for direct
+# owner/name or github.com references in gh/git commands.
+BLOCKED_UPSTREAM_REPOSITORIES = (
+    "earendil-works/pi",
+    "badlogic/pi-mono",
+    "nicobailon/pi-subagents",
+)
+BLOCKED_UPSTREAM_REPO_RE = re.compile(
+    r"(?:github\.com[:/])?(?:"
+    + "|".join(re.escape(repo) for repo in BLOCKED_UPSTREAM_REPOSITORIES)
+    + r")",
+    re.IGNORECASE,
+)
+# Git subcommands that perform network/public actions and can target a remote.
+BLOCKED_UPSTREAM_GIT_ACTIONS = frozenset(
+    {"push", "clone", "remote", "fetch", "pull", "submodule"}
+)
 
 
 class StronkPiError(RuntimeError):
@@ -601,7 +651,38 @@ def run_shared_pre_tool_use_hook(
     return interpret_shared_hook_payload(parsed)
 
 
+def command_targets_blocked_upstream(command: str) -> bool:
+    """Return True when a shell command performs a public git/gh action against a blocked upstream repo.
+
+    Detects blocked repositories named directly as ``owner/name`` or via a github.com URL
+    inside a ``gh`` invocation or a state-changing ``git`` subcommand (push/clone/remote/
+    fetch/pull/submodule). Remote-name indirection cannot be resolved statically and is
+    intentionally out of scope; the textual upstream-boundary policy still applies.
+    """
+    stripped = command.strip()
+    if not stripped or not BLOCKED_UPSTREAM_REPO_RE.search(stripped):
+        return False
+    # Split on shell/line separators so compound commands are inspected segment by segment.
+    for segment in re.split(r"[;\n&|]+", stripped):
+        tokens = segment.split()
+        if len(tokens) < 2:
+            continue
+        program = tokens[0]
+        if program == "gh":
+            if BLOCKED_UPSTREAM_REPO_RE.search(segment):
+                return True
+        elif program == "git":
+            if (
+                tokens[1] in BLOCKED_UPSTREAM_GIT_ACTIONS
+                and BLOCKED_UPSTREAM_REPO_RE.search(segment)
+            ):
+                return True
+    return False
+
+
 def internally_screen_bash(command: str) -> tuple[bool, str]:
+    if command_targets_blocked_upstream(command):
+        return False, "blocked upstream git/gh action denied by distribution boundary"
     for pattern in DENY_BASH_PATTERNS:
         if pattern.search(command):
             return False, "blocked by distribution-owned shell safety screen"
@@ -715,11 +796,16 @@ def guarded_tool_decision(tool: str, payload: dict[str, Any], cwd: Path, context
         command = payload.get("command")
         if not isinstance(command, str) or not command.strip():
             raise StronkPiError("bash payload missing command")
+        # The distribution-owned screen always runs first and its deny is final, even
+        # when a shared dangerous-command hook is configured, so upstream-boundary and
+        # secret-laden commands can never be allowed by an external hook.
+        allowed, reason = internally_screen_bash(command)
+        if not allowed:
+            return {"allow": allowed, "reason": reason, "input": payload}
         shared = run_shared_pre_tool_use_hook("shell_command", {"command": command}, cwd, context)
         if shared is not None:
-            allowed, reason = shared
-        else:
-            allowed, reason = internally_screen_bash(command)
+            allowed, shared_reason = shared
+            reason = f"{reason}; {shared_reason}"
         return {"allow": allowed, "reason": reason, "input": payload}
     if tool in {"write", "edit"}:
         _target, reason = validate_mutation_target(tool, payload, cwd)
@@ -749,8 +835,18 @@ def hook_decision(event: dict[str, Any]) -> dict[str, Any]:
         command = event.get("command")
         if not isinstance(command, str) or not command.strip():
             raise StronkPiError("user_bash payload missing command")
+        allowed, reason = internally_screen_bash(command)
+        if not allowed:
+            return {
+                "allow": allowed,
+                "reason": reason,
+                "command": command,
+                "excludeFromContext": bool(event.get("excludeFromContext")),
+            }
         shared = run_shared_pre_tool_use_hook("shell_command", {"command": command}, cwd, context)
-        allowed, reason = shared if shared is not None else internally_screen_bash(command)
+        if shared is not None:
+            allowed, shared_reason = shared
+            reason = f"{reason}; {shared_reason}"
         return {
             "allow": allowed,
             "reason": reason,
@@ -2158,22 +2254,41 @@ def build_mcp_adapter_config(registry_path: Path, selected_tools: list[str]) -> 
     }
 
 
+def validate_package_pin_value(name: str, version: str) -> None:
+    """Validate a resolved runtime package pin is concrete and syntactically safe.
+
+    Default pins are trusted constants, but ``runtime_package_pin`` also accepts
+    overrides from ``defaults.toml``; a malicious defaults file could otherwise redirect
+    runtime discovery to a floating version or an arbitrary package name.
+    """
+    if not PACKAGE_PIN_NAME_RE.fullmatch(name):
+        raise StronkPiError(f"runtime package pin has invalid name: {name!r}")
+    if not PACKAGE_PIN_VERSION_RE.fullmatch(version):
+        raise StronkPiError(f"runtime package pin has invalid version: {version!r}")
+    if FLOATING_VERSION_RE.search(version):
+        raise StronkPiError(f"runtime package pin must be pinned, not floating: {name}@{version}")
+
+
 def runtime_package_pin(defaults: dict[str, Any], key: str) -> tuple[str, str]:
     fallback = DEFAULT_PACKAGE_PINS.get(key)
     if fallback is None:
         raise StronkPiError(f"unknown runtime package pin: {key}")
     pins = defaults.get("package_pins")
     if not isinstance(pins, dict):
-        return fallback
-    package = pins.get(key)
-    if not isinstance(package, dict):
-        return fallback
-    name = package.get("name")
-    version = package.get("version")
-    return (
-        name if isinstance(name, str) and name.strip() else fallback[0],
-        version if isinstance(version, str) and version.strip() else fallback[1],
-    )
+        result = fallback
+    else:
+        package = pins.get(key)
+        if not isinstance(package, dict):
+            result = fallback
+        else:
+            name = package.get("name")
+            version = package.get("version")
+            result = (
+                name if isinstance(name, str) and name.strip() else fallback[0],
+                version if isinstance(version, str) and version.strip() else fallback[1],
+            )
+    validate_package_pin_value(*result)
+    return result
 
 
 def mcp_adapter_pin(defaults: dict[str, Any]) -> tuple[str, str]:
@@ -3273,6 +3388,28 @@ def dirs_between(root: Path, leaf: Path) -> list[Path]:
     return dirs
 
 
+def append_skill_root(
+    roots: list[dict[str, str]],
+    seen: set[str],
+    candidate: Path,
+    scope: str,
+    *,
+    owner_root: Path | None = None,
+    label: str = "skill root",
+) -> None:
+    if not candidate.is_dir():
+        return
+    candidate_real = candidate.resolve(strict=False)
+    if owner_root is not None:
+        owner_real = owner_root.resolve(strict=False)
+        if not is_relative_to(candidate_real, owner_real):
+            raise StronkPiError(f"{label} escapes owner root: {candidate} -> {candidate_real}")
+    resolved = str(candidate_real)
+    if resolved not in seen:
+        seen.add(resolved)
+        roots.append({"path": resolved, "scope": scope})
+
+
 def discover_skill_roots(*, cwd: Path | None = None, home: Path | None = None) -> list[dict[str, str]]:
     launch_cwd = (cwd or Path.cwd()).resolve(strict=False)
     operator_home = (home or Path.home()).resolve(strict=False)
@@ -3281,35 +3418,80 @@ def discover_skill_roots(*, cwd: Path | None = None, home: Path | None = None) -
 
     for directory in dirs_between(git_root_or_self(launch_cwd), launch_cwd):
         candidate = directory / ".agents" / "skills"
-        if not candidate.is_dir():
-            continue
         directory_real = directory.resolve(strict=False)
-        candidate_real = candidate.resolve(strict=False)
-        if not is_relative_to(candidate_real, directory_real):
-            raise StronkPiError(f"repo skill root escapes launch directory: {candidate} -> {candidate_real}")
-        resolved = str(candidate_real)
-        if resolved not in seen:
-            seen.add(resolved)
-            roots.append({"path": resolved, "scope": "repo"})
+        append_skill_root(roots, seen, candidate, "repo", owner_root=directory_real, label="repo skill root")
 
     user_root = operator_home / ".agents" / "skills"
-    if user_root.is_dir():
-        resolved = str(user_root.resolve(strict=False))
-        if resolved not in seen:
-            seen.add(resolved)
-            roots.append({"path": resolved, "scope": "user"})
+    append_skill_root(roots, seen, user_root, "user")
 
     return roots
+
+
+def runtime_skill_roots(root: Path) -> list[dict[str, str]]:
+    defaults = load_runtime_defaults(root)
+    roots: list[dict[str, str]] = []
+    seen: set[str] = set()
+    root_real = root.resolve(strict=False)
+    for key in SUBAGENT_RUNTIME_PACKAGE_KEYS:
+        package = runtime_package_status(root, defaults, key)
+        if not package["installed"]:
+            continue
+        package_root = Path(str(package["packagePath"]))
+        package_root_real = package_root.resolve(strict=False)
+        # Reject symlinked or escaping runtime package roots before exporting system skill
+        # roots. Without this check, a symlinked candidate dir could resolve outside the
+        # state root and make the skills path look "inside" the escaping owner root.
+        if not is_relative_to(package_root_real, root_real):
+            raise StronkPiError(
+                f"{package['packageName']} runtime package root escapes state root: "
+                f"{package_root} -> {package_root_real}"
+            )
+        append_skill_root(
+            roots,
+            seen,
+            package_root / "skills",
+            "system",
+            owner_root=package_root_real,
+            label=f"{package['packageName']} skill root",
+        )
+    return roots
+
+
+def harness_skill_roots(root: Path, *, cwd: Path | None = None, home: Path | None = None) -> list[dict[str, str]]:
+    roots = discover_skill_roots(cwd=cwd, home=home)
+    seen = {item["path"] for item in roots}
+    for item in runtime_skill_roots(root):
+        if item["path"] in seen:
+            continue
+        seen.add(item["path"])
+        roots.append(item)
+    return roots
+
+
+def scrub_harness_env(env: dict[str, str]) -> dict[str, str]:
+    """Strip injection-prone environment variables before launching the Pi runtime.
+
+    Node, the dynamic loader, Python, npm, and Bun honor a family of env vars that can
+    load arbitrary code, rewrite module resolution, pin a custom CA, or disable TLS
+    verification. These must never reach ``harness_environment()`` output even when the
+    caller's shell sets them.
+    """
+    for name in list(env):
+        if name in HARNESS_ENV_INJECTION_DENY_EXACT:
+            env.pop(name, None)
+        elif name.startswith(HARNESS_ENV_INJECTION_DENY_PREFIXES):
+            env.pop(name, None)
+    return env
 
 
 def harness_environment(root: Path) -> dict[str, str]:
     guard_script = setup_root() / "lib" / "stronk-pi-guard.py"
     defaults = load_runtime_defaults(root)
-    skill_roots = discover_skill_roots()
+    skill_roots = harness_skill_roots(root)
     ensure_state_root_layout(root)
     home = operator_home_path()
     python = trusted_python_executable()
-    env = os.environ.copy()
+    env = scrub_harness_env(os.environ.copy())
     env["HOME"] = str(home)
     validate_optional_absolute_env_path(env, "XDG_CONFIG_HOME")
     validate_optional_absolute_env_path(env, "XDG_CACHE_HOME")
@@ -3354,7 +3536,7 @@ def harness_environment(root: Path) -> dict[str, str]:
 
 def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
     status = inspect_bundle_status(root)
-    skill_roots = discover_skill_roots()
+    skill_roots = harness_skill_roots(root)
     home = operator_home_path()
     warnings: list[str] = []
     if not status["plugin"]["installed"]:
@@ -3535,7 +3717,7 @@ def harness_main(argv: list[str] | None = None) -> int:
     if not pi_binary.is_file() or not os.access(pi_binary, os.X_OK):
         raise StronkPiError("trusted Pi runtime missing; install a trust-pinned runtime before live launch")
     env = harness_environment(root)
-    skill_roots = discover_skill_roots()
+    skill_roots = harness_skill_roots(root)
     plugin_path = Path(payload["pluginArtifact"]["expectedPath"])
     session_dir = root / "agent" / "sessions"
     subagent_status = prepare_subagent_runtime(root)
