@@ -26,3 +26,7 @@ id_ed25519
 .pytest_cache/
 .coverage
 tmp/
+
+# Active execution evidence is local working state and may contain workstation
+# paths in tmux logs. Completed plans can be curated before publication.
+docs/exec-plans/active/

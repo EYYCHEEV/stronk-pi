@@ -33,8 +33,6 @@ FORBIDDEN_SIMPLE = [
     "STRONK_PI_PLUGIN_REPO",
     "~/.agents/stronk",
     "pi-core/.pi/agent",
-    "/Users/eyy",
-    "Documents/Work/Dev/repos",
     "curl | sh",
     "curl|sh",
     "curl | bash",
@@ -72,6 +70,8 @@ COMMAND_PATTERNS = [
 ]
 
 CONSTRUCTED_PRIVATE_PATH_PATTERNS = [
+    re.compile("/" + "Users" + r"/[A-Za-z0-9._-]+"),
+    re.compile("Documents" + "/" + "Work" + "/" + "Dev" + "/" + "repos"),
     re.compile(r"['\"]/Users/['\"]\s*\+"),
     re.compile(r"['\"]/home/['\"]\s*\+"),
 ]

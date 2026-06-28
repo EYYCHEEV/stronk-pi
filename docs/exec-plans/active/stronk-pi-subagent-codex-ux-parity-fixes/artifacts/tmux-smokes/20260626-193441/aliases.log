@@ -1,4 +1,0 @@
-Warning: No models match pattern "neuralwatt/glm-5.2"
-Warning: No models match pattern "neuralwatt/glm-5.2-short"
-Smoke test complete. All three alias cases passed with real workers, correct alias resolution, and confirmed `STATUS_TOKEN=STRONK_PI_ALIAS_OK`. No further action required.
-STRONK_PI_SMOKE_EXIT=0

@@ -16,9 +16,16 @@ ARTIFACT_DIR = ROOT / "tests" / "fixtures" / "artifacts"
 MANIFEST_DIR = ROOT / "tests" / "fixtures" / "manifests"
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 PLUGIN_REPO = "EYYCHEEV/stronk-pi-plugin"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
 PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
+SUBAGENTS_REPO = "EYYCHEEV/stronk-pi-subagents"
+SUBAGENTS_VERSION = "0.22.0-stronk.3"
+SUBAGENTS_TAG = f"stronk-pi-subagents-v{SUBAGENTS_VERSION}"
+SUBAGENTS_ASSET = f"stronk-pi-subagents-{SUBAGENTS_VERSION}.tgz"
+SUBAGENTS_UPSTREAM_REPO = "nicobailon/pi-subagents"
+SUBAGENTS_UPSTREAM_VERSION = "0.22.0"
+SUBAGENTS_UPSTREAM_COMMIT = "1fd371d2a068458741a15507edc6cd49a9807486"
 
 
 def bundle_contract() -> dict:
@@ -40,7 +47,7 @@ def bundle_contract() -> dict:
         },
         "packagePins": {
             "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.9.0"},
-            "subagents": {"name": "pi-subagents", "version": "0.22.0"},
+            "subagents": {"name": "stronk-pi-subagents", "version": SUBAGENTS_VERSION},
             "intercom": {"name": "pi-intercom", "version": "0.6.0"},
             "jiti": {"name": "jiti", "version": "2.7.0"},
             "ask_user": {"name": "pi-ask-user", "version": "0.8.0"},
@@ -78,44 +85,86 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def base_manifest(artifact_path: Path, sha: str, size: int) -> dict:
+def github_attestation(repo: str, asset: str, sha: str) -> str:
+    return f"github-attestation:{repo}/{asset}@sha256:{sha}"
+
+
+def plugin_artifact(artifact_path: Path, sha: str, size: int) -> dict:
     rel = artifact_path if not artifact_path.is_absolute() else artifact_path.relative_to(MANIFEST_DIR)
+    return {
+        "name": "stronk-pi-plugin",
+        "version": PLUGIN_VERSION,
+        "sourceRepo": PLUGIN_REPO,
+        "sourceCommit": SOURCE_COMMIT,
+        "immutableTag": PLUGIN_TAG,
+        "releaseUrl": f"https://github.com/{PLUGIN_REPO}/releases/tag/{PLUGIN_TAG}",
+        "artifactPath": rel.as_posix(),
+        "sha256": sha,
+        "byteSize": size,
+        "workflowRunId": "fixture-run-1",
+        "attestation": github_attestation(PLUGIN_REPO, PLUGIN_ASSET, sha),
+        "sbom": "fixture-sbom",
+        "compatibilityVersion": "stronkpi-setup-v1",
+        "createdAt": "2026-06-16T00:00:00Z",
+        "provenance": {
+            "sourceRepo": PLUGIN_REPO,
+            "sourceCommit": SOURCE_COMMIT,
+            "immutableTag": PLUGIN_TAG,
+            "workflowRunId": "fixture-run-1"
+        }
+    }
+
+
+def subagents_artifact(artifact_path: Path, sha: str, size: int) -> dict:
+    rel = artifact_path if not artifact_path.is_absolute() else artifact_path.relative_to(MANIFEST_DIR)
+    return {
+        "name": "stronk-pi-subagents",
+        "version": SUBAGENTS_VERSION,
+        "sourceRepo": SUBAGENTS_REPO,
+        "sourceCommit": SOURCE_COMMIT,
+        "immutableTag": SUBAGENTS_TAG,
+        "releaseUrl": f"https://github.com/{SUBAGENTS_REPO}/releases/tag/{SUBAGENTS_TAG}",
+        "artifactPath": rel.as_posix(),
+        "sha256": sha,
+        "byteSize": size,
+        "workflowRunId": "fixture-run-subagents",
+        "attestation": github_attestation(SUBAGENTS_REPO, SUBAGENTS_ASSET, sha),
+        "compatibilityVersion": "stronkpi-setup-v1",
+        "createdAt": "2026-06-16T00:00:00Z",
+        "upstreamRepo": SUBAGENTS_UPSTREAM_REPO,
+        "upstreamVersion": SUBAGENTS_UPSTREAM_VERSION,
+        "upstreamCommit": SUBAGENTS_UPSTREAM_COMMIT,
+        "provenance": {
+            "sourceRepo": SUBAGENTS_REPO,
+            "sourceCommit": SOURCE_COMMIT,
+            "immutableTag": SUBAGENTS_TAG,
+            "workflowRunId": "fixture-run-subagents",
+            "upstreamRepo": SUBAGENTS_UPSTREAM_REPO,
+            "upstreamVersion": SUBAGENTS_UPSTREAM_VERSION,
+            "upstreamCommit": SUBAGENTS_UPSTREAM_COMMIT
+        }
+    }
+
+
+def base_manifest(plugin_path: Path, plugin_sha: str, plugin_size: int, subagents_path: Path, subagents_sha: str, subagents_size: int) -> dict:
     return {
         "schemaVersion": 1,
         "compatibilityVersion": "stronkpi-setup-v1",
         "bundle": bundle_contract(),
         "artifacts": [
-            {
-                "name": "stronk-pi-plugin",
-                "version": PLUGIN_VERSION,
-                "sourceRepo": PLUGIN_REPO,
-                "sourceCommit": SOURCE_COMMIT,
-                "immutableTag": PLUGIN_TAG,
-                "releaseUrl": f"https://github.com/{PLUGIN_REPO}/releases/tag/{PLUGIN_TAG}",
-                "artifactPath": rel.as_posix(),
-                "sha256": sha,
-                "byteSize": size,
-                "workflowRunId": "fixture-run-1",
-                "attestation": "fixture-attestation",
-                "sbom": "fixture-sbom",
-                "compatibilityVersion": "stronkpi-setup-v1",
-                "createdAt": "2026-06-16T00:00:00Z",
-                "provenance": {
-                    "sourceRepo": PLUGIN_REPO,
-                    "sourceCommit": SOURCE_COMMIT,
-                    "immutableTag": PLUGIN_TAG,
-                    "workflowRunId": "fixture-run-1"
-                }
-            }
+            plugin_artifact(plugin_path, plugin_sha, plugin_size),
+            subagents_artifact(subagents_path, subagents_sha, subagents_size),
         ]
     }
 
 
-def base_https_manifest(artifact_url: str, sha: str, size: int) -> dict:
-    manifest = base_manifest(Path("../artifacts") / PLUGIN_ASSET, sha, size)
+def base_https_manifest(artifact_url: str, plugin_sha: str, plugin_size: int, subagents_path: Path, subagents_sha: str, subagents_size: int) -> dict:
+    manifest = base_manifest(Path("../artifacts") / PLUGIN_ASSET, plugin_sha, plugin_size, subagents_path, subagents_sha, subagents_size)
     item = manifest["artifacts"][0]
     item.pop("artifactPath")
     item["artifactUrl"] = artifact_url
+    item["workflowRunId"] = "123456789"
+    item["provenance"]["workflowRunId"] = "123456789"
     return manifest
 
 
@@ -132,6 +181,8 @@ def main() -> None:
     traversal = ARTIFACT_DIR / "archive-traversal.tgz"
     symlink = ARTIFACT_DIR / "symlink-escape.tgz"
     hardlink = ARTIFACT_DIR / "hardlink-escape.tgz"
+    subagents = ARTIFACT_DIR / SUBAGENTS_ASSET
+    subagents_stub = ARTIFACT_DIR / "stronk-pi-subagents-stub.tgz"
 
     write_tgz(
         good,
@@ -154,10 +205,50 @@ def main() -> None:
     )
     write_tgz(symlink, {"package/link": b""}, symlink=True)
     write_tgz(hardlink, {"package/link": b""}, hardlink=True)
+    write_tgz(
+        subagents,
+        {
+            "package/package.json": (
+                json.dumps(
+                    {
+                        "name": "stronk-pi-subagents",
+                        "version": SUBAGENTS_VERSION,
+                        "pi": {"extensions": ["./src/extension/index.ts"]},
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode(),
+            "package/src/extension/index.ts": b"export default function subagents() {}\n",
+            "package/src/agents/agents.ts": b"export function discoverAgents() { return []; }\n",
+            "package/src/agents/skills.ts": b"export function discoverAvailableSkills() { return []; }\n",
+            "package/src/agents/user-agent-dir.ts": b"export function resolveUserAgentDir() { return process.env.PI_CODING_AGENT_DIR || ''; }\n",
+            "package/agents/delegate.md": b"---\nname: delegate\ndescription: delegate\n---\n",
+            "package/agents/worker.md": b"---\nname: worker\ndescription: worker\n---\n",
+            "package/skills/pi-subagents/SKILL.md": b"---\ndescription: subagents\n---\n",
+        },
+    )
+    write_tgz(
+        subagents_stub,
+        {
+            "package/package.json": (
+                json.dumps({"name": "stronk-pi-subagents", "version": SUBAGENTS_VERSION}, sort_keys=True) + "\n"
+            ).encode(),
+        },
+    )
 
     good_sha = digest(good)
     good_size = good.stat().st_size
-    good_manifest = base_manifest(Path("../artifacts") / good.name, good_sha, good_size)
+    subagents_sha = digest(subagents)
+    subagents_size = subagents.stat().st_size
+    good_manifest = base_manifest(
+        Path("../artifacts") / good.name,
+        good_sha,
+        good_size,
+        Path("../artifacts") / subagents.name,
+        subagents_sha,
+        subagents_size,
+    )
     write_manifest("good-local.json", good_manifest)
     write_manifest(
         "good-https-artifact.json",
@@ -165,11 +256,15 @@ def main() -> None:
             f"https://github.com/{PLUGIN_REPO}/releases/download/{PLUGIN_TAG}/{PLUGIN_ASSET}",
             good_sha,
             good_size,
+            Path("../artifacts") / subagents.name,
+            subagents_sha,
+            subagents_size,
         ),
     )
 
     checksum = json.loads(json.dumps(good_manifest))
     checksum["artifacts"][0]["sha256"] = "0" * 64
+    checksum["artifacts"][0]["attestation"] = github_attestation(PLUGIN_REPO, PLUGIN_ASSET, "0" * 64)
     write_manifest("checksum-mismatch.json", checksum)
 
     missing = json.loads(json.dumps(good_manifest))
@@ -212,6 +307,9 @@ def main() -> None:
         Path("../artifacts") / wrong_package_identity.name,
         digest(wrong_package_identity),
         wrong_package_identity.stat().st_size,
+        Path("../artifacts") / subagents.name,
+        subagents_sha,
+        subagents_size,
     )
     write_manifest("wrong-package-identity.json", wrong_identity)
 
@@ -228,8 +326,25 @@ def main() -> None:
         ("symlink-escape-denied.json", symlink),
         ("hardlink-escape-denied.json", hardlink),
     ):
-        manifest = base_manifest(Path("../artifacts") / artifact.name, digest(artifact), artifact.stat().st_size)
+        manifest = base_manifest(
+            Path("../artifacts") / artifact.name,
+            digest(artifact),
+            artifact.stat().st_size,
+            Path("../artifacts") / subagents.name,
+            subagents_sha,
+            subagents_size,
+        )
         write_manifest(filename, manifest)
+
+    subagents_stub_manifest = json.loads(json.dumps(good_manifest))
+    stub_sha = digest(subagents_stub)
+    stub_item = subagents_artifact(
+        Path("../artifacts") / subagents_stub.name,
+        stub_sha,
+        subagents_stub.stat().st_size,
+    )
+    subagents_stub_manifest["artifacts"][1] = stub_item
+    write_manifest("subagents-stub-denied.json", subagents_stub_manifest)
 
     sums = [f"{digest(path)}  {path.name}" for path in sorted(ARTIFACT_DIR.glob("*.tgz"))]
     (ARTIFACT_DIR / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n", encoding="utf-8")

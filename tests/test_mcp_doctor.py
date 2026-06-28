@@ -27,6 +27,8 @@ def load_guard():
 
 
 guard = load_guard()
+SUBAGENTS_PACKAGE = "stronk-pi-subagents"
+SUBAGENTS_VERSION = "0.22.0-stronk.3"
 
 
 class McpDoctorTests(unittest.TestCase):
@@ -308,6 +310,20 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             encoding="utf-8",
         )
         (package / "index.ts").write_text("export default function extension() {}\n", encoding="utf-8")
+        if name == SUBAGENTS_PACKAGE:
+            required_files = {
+                "src/extension/index.ts": "export default function subagents() {}\n",
+                "src/agents/agents.ts": "export function discoverAgents() { return []; }\n",
+                "src/agents/skills.ts": "export function discoverAvailableSkills() { return []; }\n",
+                "src/agents/user-agent-dir.ts": "export function resolveUserAgentDir() { return ''; }\n",
+                "agents/delegate.md": "---\nname: delegate\ndescription: delegate\n---\n",
+                "agents/worker.md": "---\nname: worker\ndescription: worker\n---\n",
+                "skills/pi-subagents/SKILL.md": "---\ndescription: subagents\n---\n",
+            }
+            for relative, content in required_files.items():
+                target = package / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
         return package
 
     def write_runtime_defaults(self, root: Path) -> None:
@@ -385,7 +401,7 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             config_mode = config_path.stat().st_mode & 0o777
             project_mcp_exists = (project / ".mcp.json").is_file()
             launch_args = guard.build_pi_launch_args(
-                plugin_path=root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs",
+                plugin_path=root / "artifacts" / f"stronk-pi-plugin-{guard.DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs",
                 session_dir=root / "agent" / "sessions",
                 mcp_status=status,
             )
@@ -409,13 +425,13 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             tmp = Path(raw)
             root = tmp / "state"
             self.write_runtime_defaults(root)
-            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
             intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
 
             status = guard.prepare_subagent_runtime(root)
             inspected = guard.inspect_subagent_runtime(root)
             launch_args = guard.build_pi_launch_args(
-                plugin_path=root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs",
+                plugin_path=root / "artifacts" / f"stronk-pi-plugin-{guard.DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs",
                 session_dir=root / "agent" / "sessions",
                 subagent_status=status,
             )
@@ -424,8 +440,8 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             bridge_target = bridge_link.resolve()
 
         self.assertTrue(status["enabled"])
-        self.assertEqual(status["packages"]["subagents"]["packageName"], "pi-subagents")
-        self.assertEqual(status["packages"]["subagents"]["packageVersion"], "0.22.0")
+        self.assertEqual(status["packages"]["subagents"]["packageName"], SUBAGENTS_PACKAGE)
+        self.assertEqual(status["packages"]["subagents"]["packageVersion"], SUBAGENTS_VERSION)
         self.assertEqual(status["packages"]["intercom"]["packageName"], "pi-intercom")
         self.assertEqual(status["packages"]["intercom"]["packageVersion"], "0.6.0")
         self.assertEqual(status["extensionPaths"], [str(subagents), str(intercom)])
@@ -437,12 +453,37 @@ class McpAdapterRuntimeTests(unittest.TestCase):
         self.assertEqual(launch_args.count("--extension"), 3)
         self.assertIn(str(subagents), launch_args)
         self.assertIn(str(intercom), launch_args)
+        self.assertIn("--exclude-tools", launch_args)
+        self.assertIn("subagent", launch_args)
+        self.assertLess(launch_args.index(str(intercom)), launch_args.index("--exclude-tools"))
+        self.assertIn("--exclude-tools", guard.CONTROLLED_PI_FLAGS)
+        self.assertIn("-xt", guard.CONTROLLED_PI_FLAGS)
+
+    def test_subagent_runtime_launch_args_hide_raw_subagent_tool(self):
+        launch_args = guard.build_pi_launch_args(
+            plugin_path=Path("/tmp/plugin/src/index.mjs"),
+            session_dir=Path("/tmp/session"),
+            subagent_status={
+                "enabled": True,
+                "extensionPaths": ["/tmp/stronk-pi-subagents", "/tmp/pi-intercom"],
+            },
+        )
+
+        self.assertIn("--exclude-tools", launch_args)
+        self.assertIn("subagent", launch_args)
+        self.assertEqual(launch_args[launch_args.index("--exclude-tools") + 1], "subagent")
+        with self.assertRaisesRegex(guard.StronkPiError, "flag is owned by stronkpi"):
+            guard.validate_pi_passthrough_args(["--exclude-tools", "subagent"])
+        with self.assertRaisesRegex(guard.StronkPiError, "flag is owned by stronkpi"):
+            guard.validate_pi_passthrough_args(["--exclude-tools=subagent"])
+        with self.assertRaisesRegex(guard.StronkPiError, "flag is owned by stronkpi"):
+            guard.validate_pi_passthrough_args(["-xt", "subagent"])
 
     def test_diagnose_json_reports_linked_subagent_runtime(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             root = tmp / "state"
-            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
             intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
             env = os.environ.copy()
             env.update(
@@ -482,8 +523,8 @@ class McpAdapterRuntimeTests(unittest.TestCase):
         self.assertTrue(subagent_runtime["enabled"], subagent_runtime)
         self.assertEqual(subagent_runtime["adapter"], "intercom")
         self.assertTrue(subagent_runtime["intercomBridgeLinked"], subagent_runtime)
-        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageName"], "pi-subagents")
-        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageVersion"], "0.22.0")
+        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageName"], SUBAGENTS_PACKAGE)
+        self.assertEqual(subagent_runtime["packages"]["subagents"]["packageVersion"], SUBAGENTS_VERSION)
         self.assertEqual(subagent_runtime["packages"]["intercom"]["packageName"], "pi-intercom")
         self.assertEqual(subagent_runtime["packages"]["intercom"]["packageVersion"], "0.6.0")
         self.assertIn(str(subagents), subagent_runtime["extensionPaths"])
@@ -499,15 +540,37 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(guard.StronkPiError, "subagent runtime package missing"):
                 guard.prepare_subagent_runtime(root)
         missing = {(item["packageName"], item["packageVersion"]) for item in inspected["missingPackages"]}
-        self.assertIn(("pi-subagents", "0.22.0"), missing)
+        self.assertIn((SUBAGENTS_PACKAGE, SUBAGENTS_VERSION), missing)
         self.assertIn(("pi-intercom", "0.6.0"), missing)
         self.assertFalse(inspected["enabled"])
         self.assertFalse(inspected["intercomBridgeLinked"])
+
+    def test_subagent_runtime_rejects_package_json_only_fork_stub(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            self.write_runtime_defaults(root)
+            stub = root / "agent" / "npm" / "node_modules" / SUBAGENTS_PACKAGE
+            stub.mkdir(parents=True)
+            (stub / "package.json").write_text(
+                json.dumps({"name": SUBAGENTS_PACKAGE, "version": SUBAGENTS_VERSION}) + "\n",
+                encoding="utf-8",
+            )
+            self.write_runtime_package(root, "pi-intercom", "0.6.0")
+
+            inspected = guard.inspect_subagent_runtime(root)
+
+            with self.assertRaisesRegex(guard.StronkPiError, "subagent runtime package missing"):
+                guard.prepare_subagent_runtime(root)
+        missing = {(item["packageName"], item["packageVersion"]) for item in inspected["missingPackages"]}
+        self.assertIn((SUBAGENTS_PACKAGE, SUBAGENTS_VERSION), missing)
+        self.assertFalse(inspected["packages"]["subagents"]["installed"])
 
     def test_generated_subagent_roles_allow_pi_intercom_bridge(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             root = tmp / "state"
+            plugin_path = (root / guard.DEFAULT_PLUGIN_RELATIVE).resolve(strict=False)
             bridge_path = root / "agent" / "extensions" / "pi-intercom"
 
             guard.install_bundle_defaults(root=root, dry_run=False)
@@ -516,7 +579,9 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             extension_items = [item.strip() for item in extensions_line.removeprefix("extensions: ").split(",")]
 
         self.assertIn("extensions: ", role_text)
+        self.assertIn(str(plugin_path), extension_items)
         self.assertIn(str(bridge_path), extension_items)
+        self.assertNotIn("~/.stronk-pi", extensions_line)
         self.assertNotIn("pi-intercom", extension_items)
 
     def test_prepare_runtime_refreshes_project_mcp_json(self):
@@ -643,9 +708,9 @@ class McpAdapterRuntimeTests(unittest.TestCase):
             (xdg / "mcp").mkdir(parents=True)
             xdg_cache.mkdir()
             self.write_adapter_package(root)
-            subagents = self.write_runtime_package(root, "pi-subagents", "0.22.0")
+            subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
             intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
-            plugin_path = root / "artifacts" / "stronk-pi-plugin-0.1.0" / "package" / "src" / "index.mjs"
+            plugin_path = root / "artifacts" / f"stronk-pi-plugin-{guard.DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
             plugin_path.parent.mkdir(parents=True)
             plugin_path.write_text("export default function plugin() {}\n", encoding="utf-8")
             pi_binary = root / "pi-fork-runtime" / "node_modules" / ".bin" / "pi"

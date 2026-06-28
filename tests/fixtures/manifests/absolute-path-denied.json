@@ -2,25 +2,52 @@
   "artifacts": [
     {
       "artifactPath": "/tmp/stronk-pi-plugin.tgz",
-      "attestation": "fixture-attestation",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.0.tgz@sha256:23c18390260896f58cd696e8865e4557e3a451eebe8a63ffff76b0f8993091ba",
       "byteSize": 301,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
-      "immutableTag": "stronk-pi-plugin-v0.1.0",
+      "immutableTag": "stronk-pi-plugin-v0.2.0",
       "name": "stronk-pi-plugin",
       "provenance": {
-        "immutableTag": "stronk-pi-plugin-v0.1.0",
+        "immutableTag": "stronk-pi-plugin-v0.2.0",
         "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
         "workflowRunId": "fixture-run-1"
       },
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.1.0",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.0",
       "sbom": "fixture-sbom",
-      "sha256": "ed8f09e4f1cf626af543828e1bec85873951c7c6a898dd0615e796184c90ce1a",
+      "sha256": "23c18390260896f58cd696e8865e4557e3a451eebe8a63ffff76b0f8993091ba",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
       "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "workflowRunId": "fixture-run-1"
+    },
+    {
+      "artifactPath": "../artifacts/stronk-pi-subagents-0.22.0-stronk.3.tgz",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-subagents/stronk-pi-subagents-0.22.0-stronk.3.tgz@sha256:5ac20dddf7d0c4d842e874d0be9c46a7410861e1a0964c1b79d32f8b63506ecc",
+      "byteSize": 522,
+      "compatibilityVersion": "stronkpi-setup-v1",
+      "createdAt": "2026-06-16T00:00:00Z",
+      "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.3",
+      "name": "stronk-pi-subagents",
+      "provenance": {
+        "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.3",
+        "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+        "sourceRepo": "EYYCHEEV/stronk-pi-subagents",
+        "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486",
+        "upstreamRepo": "nicobailon/pi-subagents",
+        "upstreamVersion": "0.22.0",
+        "workflowRunId": "fixture-run-subagents"
+      },
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-subagents/releases/tag/stronk-pi-subagents-v0.22.0-stronk.3",
+      "sha256": "5ac20dddf7d0c4d842e874d0be9c46a7410861e1a0964c1b79d32f8b63506ecc",
+      "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+      "sourceRepo": "EYYCHEEV/stronk-pi-subagents",
+      "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486",
+      "upstreamRepo": "nicobailon/pi-subagents",
+      "upstreamVersion": "0.22.0",
+      "version": "0.22.0-stronk.3",
+      "workflowRunId": "fixture-run-subagents"
     }
   ],
   "bundle": {
@@ -59,8 +86,8 @@
         "version": "2.9.0"
       },
       "subagents": {
-        "name": "pi-subagents",
-        "version": "0.22.0"
+        "name": "stronk-pi-subagents",
+        "version": "0.22.0-stronk.3"
       },
       "tsx": {
         "name": "tsx",
