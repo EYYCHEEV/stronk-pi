@@ -47,6 +47,10 @@ class ReleaseScriptTests(unittest.TestCase):
                 ".codex-plugin/plugin.json",
             ):
                 copy_into_temp(tmp, rel)
+            original_guard_text = (tmp / "lib" / "stronk-pi-guard.py").read_text(encoding="utf-8")
+            plugin_default_line = next(
+                line for line in original_guard_text.splitlines() if line.startswith("DEFAULT_PLUGIN_VERSION = ")
+            )
 
             proc = subprocess.run(
                 [sys.executable, str(tmp / "scripts" / "bump-version.py"), "0.2.0"],
@@ -61,7 +65,7 @@ class ReleaseScriptTests(unittest.TestCase):
             guard_text = (tmp / "lib" / "stronk-pi-guard.py").read_text(encoding="utf-8")
             plugin = json.loads((tmp / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
             self.assertIn('VERSION = "0.2.0"', guard_text)
-            self.assertIn('DEFAULT_PLUGIN_VERSION = "0.2.1"', guard_text)
+            self.assertIn(plugin_default_line, guard_text)
             self.assertEqual(plugin["version"], "0.2.0")
 
     def test_import_plugin_release_updates_distribution_surfaces(self):

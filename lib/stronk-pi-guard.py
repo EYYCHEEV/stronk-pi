@@ -40,7 +40,7 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
     Path(".agents") / "roles" / "stronk",
     Path(".agents") / "codex" / "roles" / "stronk",
 )
-DEFAULT_PLUGIN_VERSION = "0.2.1"
+DEFAULT_PLUGIN_VERSION = "0.2.2"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 DEFAULT_PACKAGE_PINS = {
     "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),

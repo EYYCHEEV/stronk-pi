@@ -55,23 +55,23 @@
   "artifacts": [
     {
       "name": "stronk-pi-plugin",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-      "sourceCommit": "488d712156652d4e9812110b85ac18ab9e81453d",
-      "immutableTag": "stronk-pi-plugin-v0.2.1",
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.1",
-      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.2.1/stronk-pi-plugin-0.2.1.tgz",
-      "sha256": "191899f14788953c689edf44eb343af1eace047ae5f63ce4b4b98184051c1acb",
-      "byteSize": 110532,
-      "workflowRunId": "28315876480",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.1.tgz@sha256:191899f14788953c689edf44eb343af1eace047ae5f63ce4b4b98184051c1acb",
+      "sourceCommit": "bffa6caa5ee6823ecd0a6bf0531e10a7ff6006ab",
+      "immutableTag": "stronk-pi-plugin-v0.2.2",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.2",
+      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.2.2/stronk-pi-plugin-0.2.2.tgz",
+      "sha256": "90ef35d72b31b7d36cf6c786feefb3d6417db6c0a896d83ef753a5962867e270",
+      "byteSize": 111606,
+      "workflowRunId": "28323446270",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.2.tgz@sha256:90ef35d72b31b7d36cf6c786feefb3d6417db6c0a896d83ef753a5962867e270",
       "compatibilityVersion": "stronkpi-setup-v1",
-      "createdAt": "2026-06-28T08:01:20.469Z",
+      "createdAt": "2026-06-28T13:15:52.729Z",
       "provenance": {
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-        "sourceCommit": "488d712156652d4e9812110b85ac18ab9e81453d",
-        "immutableTag": "stronk-pi-plugin-v0.2.1",
-        "workflowRunId": "28315876480"
+        "sourceCommit": "bffa6caa5ee6823ecd0a6bf0531e10a7ff6006ab",
+        "immutableTag": "stronk-pi-plugin-v0.2.2",
+        "workflowRunId": "28323446270"
       }
     },
     {
