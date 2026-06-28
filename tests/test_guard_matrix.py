@@ -134,5 +134,83 @@ class ToolGuardTests(unittest.TestCase):
                 self.assertIn(f"stronk_subagent override denied: {key}", result["reason"])
 
 
+class BashSafetyScreenTests(unittest.TestCase):
+    def test_blocked_upstream_gh_commands_are_targeted(self):
+        for command in (
+            "gh pr create --repo earendil-works/pi",
+            "gh pr comment 123 --repo badlogic/pi-mono",
+            "gh issue create --repo nicobailon/pi-subagents",
+            "gh repo clone earendil-works/pi",
+            "gh release create v1 --repo badlogic/pi-mono",
+            "git clone https://github.com/earendil-works/pi",
+            "git push https://github.com/earendil-works/pi main",
+            "git push git@github.com:badlogic/pi-mono.git main",
+            "git push nicobailon/pi-subagents main",
+            "git remote add pi https://github.com/earendil-works/pi",
+            "cd /tmp && git push origin main && gh pr create --repo earendil-works/pi",
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(
+                    guard.command_targets_blocked_upstream(command),
+                    f"expected blocked upstream action: {command!r}",
+                )
+
+    def test_non_blocked_commands_are_not_targeted(self):
+        for command in (
+            "gh pr create --repo EYYCHEEV/stronk-pi",
+            "git push origin main",
+            "git push EYYCHEEV/stronk-pi main",
+            "git log --oneline",
+            "git clone https://github.com/EYYCHEEV/stronk-pi",
+            "cd /tmp/earendil-works/pi && echo hi",
+            "ls -la",
+            "echo push earendil-works/pi",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(
+                    guard.command_targets_blocked_upstream(command),
+                    f"expected non-targeted command: {command!r}",
+                )
+
+    def test_internally_screen_bash_denies_blocked_upstream_actions(self):
+        for command in (
+            "gh pr create --repo earendil-works/pi",
+            "git push https://github.com/badlogic/pi-mono",
+        ):
+            with self.subTest(command=command):
+                allowed, reason = guard.internally_screen_bash(command)
+                self.assertFalse(allowed)
+                self.assertIn("blocked upstream", reason)
+
+    def test_blocked_upstream_bash_denied_even_with_permissive_shared_hook(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_name:
+            hook = Path(tmp_name) / "permissive-hook.py"
+            hook.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+            hook.chmod(0o755)
+            old_hook = os.environ.get("STRONK_PI_DANGEROUS_COMMAND_HOOK")
+            try:
+                os.environ["STRONK_PI_DANGEROUS_COMMAND_HOOK"] = str(hook)
+                blocked = guard.guarded_tool_decision(
+                    "bash",
+                    {"command": "git push https://github.com/earendil-works/pi main"},
+                    ROOT,
+                    {},
+                )
+                self.assertFalse(blocked["allow"])
+                self.assertIn("blocked upstream", blocked["reason"])
+                # A non-blocked command still consults the permissive shared hook and is allowed,
+                # proving the hook wiring works and the deny is specific to the upstream action.
+                allowed = guard.guarded_tool_decision("bash", {"command": "echo hi"}, ROOT, {})
+                self.assertTrue(allowed["allow"])
+            finally:
+                if old_hook is None:
+                    os.environ.pop("STRONK_PI_DANGEROUS_COMMAND_HOOK", None)
+                else:
+                    os.environ["STRONK_PI_DANGEROUS_COMMAND_HOOK"] = old_hook
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
