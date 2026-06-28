@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import importlib.util
 import io
 import json
@@ -44,8 +45,8 @@ class ManifestVerifierTests(unittest.TestCase):
 
     def test_good_local_manifest_verifies(self):
         results = guard.verify_manifest(self.manifest("good-local.json"))
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].name, "stronk-pi-plugin")
+        self.assertEqual(len(results), 2)
+        self.assertEqual([result.name for result in results], ["stronk-pi-plugin", "stronk-pi-subagents"])
 
     def test_good_https_artifact_manifest_verifies_with_mocked_download(self):
         expected_url = (
@@ -82,7 +83,8 @@ class ManifestVerifierTests(unittest.TestCase):
             os.environ.pop("STRONKPI_NO_NETWORK", None)
             guard.socket.getaddrinfo = fake_getaddrinfo
             guard.urllib.request.urlopen = fake_urlopen
-            results = guard.verify_manifest(self.manifest("good-https-artifact.json"))
+            with patch.object(guard, "verify_remote_artifact_attestation") as verify_attestation:
+                results = guard.verify_manifest(self.manifest("good-https-artifact.json"))
         finally:
             guard.socket.getaddrinfo = old_getaddrinfo
             guard.urllib.request.urlopen = old_urlopen
@@ -91,8 +93,119 @@ class ManifestVerifierTests(unittest.TestCase):
             else:
                 os.environ["STRONKPI_NO_NETWORK"] = old_no_network
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].name, "stronk-pi-plugin")
+        self.assertEqual(len(results), 2)
+        self.assertEqual([result.name for result in results], ["stronk-pi-plugin", "stronk-pi-subagents"])
+        verify_attestation.assert_called_once()
+        self.assertEqual(verify_attestation.call_args.kwargs["name"], "stronk-pi-plugin")
+
+    def test_remote_artifact_requires_numeric_workflow_run_id(self):
+        path = self.manifest("good-local.json")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        item = manifest["artifacts"][0]
+        item.pop("artifactPath")
+        item["artifactUrl"] = (
+            "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/"
+            f"{PLUGIN_TAG}/{PLUGIN_ASSET}"
+        )
+        item["workflowRunId"] = "manual-release"
+        item["provenance"]["workflowRunId"] = "manual-release"
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            temp_path = Path(handle.name)
+        try:
+            with self.assertRaisesRegex(guard.StronkPiError, "workflowRunId"):
+                guard.verify_manifest(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_remote_artifact_attestation_verification_failure_fails(self):
+        path = self.manifest("good-local.json")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        item = manifest["artifacts"][0]
+        item.pop("artifactPath")
+        item["artifactUrl"] = (
+            "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/"
+            f"{PLUGIN_TAG}/{PLUGIN_ASSET}"
+        )
+        item["workflowRunId"] = "123456789"
+        item["provenance"]["workflowRunId"] = "123456789"
+        fixture = ROOT / "tests" / "fixtures" / "artifacts" / PLUGIN_ASSET
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            temp_path = Path(handle.name)
+        try:
+            with patch.object(guard, "artifact_path", return_value=fixture), patch.object(
+                guard,
+                "verify_remote_artifact_attestation",
+                side_effect=guard.StronkPiError("artifact stronk-pi-plugin attestation verification failed"),
+            ):
+                with self.assertRaisesRegex(guard.StronkPiError, "attestation verification failed"):
+                    guard.verify_manifest(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_remote_artifact_attestation_accepts_dsse_bundle_subjects(self):
+        path = ROOT / "tests" / "fixtures" / "artifacts" / PLUGIN_ASSET
+        sha = "0" * 64
+        statement = {
+            "_type": "https://in-toto.io/Statement/v1",
+            "subject": [{"name": PLUGIN_ASSET, "digest": {"sha256": sha}}],
+        }
+        output = [
+            {
+                "verificationResult": {
+                    "signature": {
+                        "certificate": {"sourceRepositoryDigest": "0123456789abcdef0123456789abcdef01234567"}
+                    }
+                },
+                "attestation": {
+                    "bundle": {
+                        "dsseEnvelope": {
+                            "payload": base64.b64encode(json.dumps(statement).encode("utf-8")).decode("ascii")
+                        }
+                    }
+                },
+            }
+        ]
+        completed = subprocess.CompletedProcess(args=["gh"], returncode=0, stdout=json.dumps(output), stderr="")
+
+        with patch.object(guard.shutil, "which", return_value="/usr/bin/gh"), patch.object(
+            guard.subprocess, "run", return_value=completed
+        ):
+            guard.verify_remote_artifact_attestation(
+                path=path,
+                name="stronk-pi-plugin",
+                version=PLUGIN_VERSION,
+                source_repo="EYYCHEEV/stronk-pi-plugin",
+                source_commit="0123456789abcdef0123456789abcdef01234567",
+                sha256=sha,
+            )
+
+    def test_remote_artifact_attestation_accepts_legacy_statement_subjects(self):
+        path = ROOT / "tests" / "fixtures" / "artifacts" / PLUGIN_ASSET
+        sha = "1" * 64
+        output = [
+            {
+                "verificationResult": {
+                    "statement": {
+                        "subject": [{"name": PLUGIN_ASSET, "digest": {"sha256": sha}}],
+                    }
+                }
+            }
+        ]
+        completed = subprocess.CompletedProcess(args=["gh"], returncode=0, stdout=json.dumps(output), stderr="")
+
+        with patch.object(guard.shutil, "which", return_value="/usr/bin/gh"), patch.object(
+            guard.subprocess, "run", return_value=completed
+        ):
+            guard.verify_remote_artifact_attestation(
+                path=path,
+                name="stronk-pi-plugin",
+                version=PLUGIN_VERSION,
+                source_repo="EYYCHEEV/stronk-pi-plugin",
+                source_commit="0123456789abcdef0123456789abcdef01234567",
+                sha256=sha,
+            )
 
     def assert_manifest_fails(self, name: str, text: str):
         with self.assertRaisesRegex(guard.StronkPiError, text):
@@ -146,6 +259,22 @@ class ManifestVerifierTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assert_manifest_fails(name, expected)
+
+    def test_exact_attestation_reference_is_required(self):
+        path = self.manifest("good-local.json")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["artifacts"][1]["attestation"] = "fixture-attestation"
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            temp_path = Path(handle.name)
+        try:
+            with self.assertRaisesRegex(guard.StronkPiError, "attestation"):
+                guard.verify_manifest(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_subagents_stub_archive_fails(self):
+        self.assert_manifest_fails("subagents-stub-denied.json", "required package content")
 
     def test_archive_escape_fixtures_fail(self):
         for name, expected in (

@@ -1,5 +1,0 @@
-
-> stronk-pi-plugin@0.1.0 smoke:installed
-> node scripts/installed-artifact-smoke.mjs
-
-installed artifact smoke: ok (/Users/eyy/.stronk-pi/artifacts/stronk-pi-plugin-0.1.0/package/src/index.mjs)

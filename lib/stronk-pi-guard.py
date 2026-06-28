@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import ipaddress
 import json
@@ -25,7 +26,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
@@ -39,11 +40,11 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
     Path(".agents") / "roles" / "stronk",
     Path(".agents") / "codex" / "roles" / "stronk",
 )
-DEFAULT_PLUGIN_VERSION = "0.1.0"
+DEFAULT_PLUGIN_VERSION = "0.2.0"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 DEFAULT_PACKAGE_PINS = {
     "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),
-    "subagents": ("pi-subagents", "0.22.0"),
+    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.3"),
     "intercom": ("pi-intercom", "0.6.0"),
 }
 SUBAGENT_RUNTIME_PACKAGE_KEYS = ("subagents", "intercom")
@@ -109,6 +110,8 @@ CONTROLLED_PI_FLAGS = {
     "-ns",
     "--tools",
     "-t",
+    "--exclude-tools",
+    "-xt",
     "--no-tools",
     "-nt",
     "--no-builtin-tools",
@@ -187,7 +190,42 @@ EXPECTED_ARTIFACT_IDENTITIES = {
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
         "tagPrefix": "stronk-pi-plugin-v",
         "assetPrefix": "stronk-pi-plugin-",
+        "signerWorkflow": "github.com/EYYCHEEV/stronk-pi-plugin/.github/workflows/release.yml",
     },
+    "stronk-pi-subagents": {
+        "sourceRepo": "EYYCHEEV/stronk-pi-subagents",
+        "tagPrefix": "stronk-pi-subagents-v",
+        "assetPrefix": "stronk-pi-subagents-",
+        "signerWorkflow": "github.com/EYYCHEEV/stronk-pi-subagents/.github/workflows/release-artifact.yml",
+        "upstreamRepo": "nicobailon/pi-subagents",
+        "upstreamVersion": "0.22.0",
+        "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486",
+    },
+}
+PACKAGE_ARCHIVE_REQUIRED_MEMBERS = {
+    "stronk-pi-plugin": (
+        "package/src/index.mjs",
+    ),
+    "stronk-pi-subagents": (
+        "package/src/extension/index.ts",
+        "package/src/agents/agents.ts",
+        "package/src/agents/skills.ts",
+        "package/src/agents/user-agent-dir.ts",
+        "package/agents/delegate.md",
+        "package/agents/worker.md",
+        "package/skills/pi-subagents/SKILL.md",
+    ),
+}
+RUNTIME_PACKAGE_REQUIRED_PATHS = {
+    "stronk-pi-subagents": (
+        "src/extension/index.ts",
+        "src/agents/agents.ts",
+        "src/agents/skills.ts",
+        "src/agents/user-agent-dir.ts",
+        "agents/delegate.md",
+        "agents/worker.md",
+        "skills/pi-subagents/SKILL.md",
+    ),
 }
 PERSONAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_.-])(?:/Users|/home)/[^/\s\"':,;)]+")
 IMAGE_PREFLIGHT_HANDLE_RE = re.compile(r"^image-preflight-[0-9A-Fa-f-]{36}$")
@@ -1509,10 +1547,15 @@ def tools_for_role(role_name: str, pi_cfg: dict[str, Any]) -> list[str]:
 
 def role_extensions(pi_cfg: dict[str, Any], root: Path) -> list[str]:
     extensions = string_list_config(pi_cfg.get("extensions") or [], "pi.extensions")
-    return [
-        str(state_intercom_bridge_path(root, "pi-intercom")) if item == "pi-intercom" else item
-        for item in extensions
-    ]
+    resolved: list[str] = []
+    for item in extensions:
+        if item == "pi-intercom":
+            resolved.append(str(state_intercom_bridge_path(root, "pi-intercom")))
+        elif item == "~/.stronk-pi" or item.startswith("~/.stronk-pi/"):
+            resolved.append(str(expand_runtime_path(item, root)))
+        else:
+            resolved.append(item)
+    return resolved
 
 
 def render_pi_role(role_path: Path, role: dict[str, Any], pi_cfg: dict[str, Any], root: Path) -> str:
@@ -2151,7 +2194,12 @@ def matching_package_root(path: Path, *, name: str, version: str) -> bool:
         package_data = json.loads(package_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-    return package_data.get("name") == name and package_data.get("version") == version
+    if package_data.get("name") != name or package_data.get("version") != version:
+        return False
+    for relative in RUNTIME_PACKAGE_REQUIRED_PATHS.get(name, ()):
+        if not (path / relative).is_file():
+            return False
+    return True
 
 
 def resolve_mcp_adapter_package(root: Path, defaults: dict[str, Any]) -> tuple[Path, bool]:
@@ -2430,6 +2478,7 @@ def validate_archive(path: Path, *, expected_name: str, expected_version: str) -
         raise StronkPiError(f"missing artifact: {path}")
     with tarfile.open(path, "r:gz") as archive:
         package_json: dict[str, Any] | None = None
+        member_names: set[str] = set()
         with tempfile.TemporaryDirectory(prefix="stronkpi-archive-check.") as tmp:
             root = Path(tmp).resolve()
             for member in archive.getmembers():
@@ -2446,6 +2495,8 @@ def validate_archive(path: Path, *, expected_name: str, expected_version: str) -
                 target = (root / name).resolve()
                 if not is_relative_to(target, root):
                     raise StronkPiError(f"archive member escapes extraction root: {name}")
+                if member.isfile():
+                    member_names.add(name)
                 if name == "package/package.json" and member.isfile():
                     handle = archive.extractfile(member)
                     if handle is None:
@@ -2460,6 +2511,12 @@ def validate_archive(path: Path, *, expected_name: str, expected_version: str) -
             raise StronkPiError(f"artifact package name must be {expected_name}")
         if package_json.get("version") != expected_version:
             raise StronkPiError(f"artifact package version must be {expected_version}")
+        missing_members = sorted(set(PACKAGE_ARCHIVE_REQUIRED_MEMBERS.get(expected_name, ())) - member_names)
+        if missing_members:
+            raise StronkPiError(
+                f"artifact {expected_name} missing required package content: "
+                + ", ".join(missing_members)
+            )
 
 
 def validate_package_pins(package_pins: Any) -> dict[str, Any]:
@@ -2491,6 +2548,7 @@ def validate_artifact_identity(
     artifact_url: Any,
     attestation: str,
     sha256: str,
+    item: dict[str, Any],
 ) -> None:
     expected = EXPECTED_ARTIFACT_IDENTITIES.get(name)
     if expected is None:
@@ -2509,10 +2567,102 @@ def validate_artifact_identity(
         expected_artifact_url = f"https://github.com/{expected_repo}/releases/download/{expected_tag}/{expected_asset}"
         if artifact_url != expected_artifact_url:
             raise StronkPiError(f"artifact {name} artifactUrl must be {expected_artifact_url}")
-    if attestation.startswith("github-attestation:"):
-        expected_attestation = f"github-attestation:{expected_repo}/{expected_asset}@sha256:{sha256}"
-        if attestation != expected_attestation:
-            raise StronkPiError(f"artifact {name} attestation must be {expected_attestation}")
+    expected_attestation = f"github-attestation:{expected_repo}/{expected_asset}@sha256:{sha256}"
+    if attestation != expected_attestation:
+        raise StronkPiError(f"artifact {name} attestation must be {expected_attestation}")
+    for field in ("upstreamRepo", "upstreamVersion", "upstreamCommit"):
+        expected_value = expected.get(field)
+        if expected_value is None:
+            continue
+        value = require_string(item, field)
+        if value != expected_value:
+            raise StronkPiError(f"artifact {name} {field} must be {expected_value}")
+
+
+def verify_remote_artifact_attestation(
+    *,
+    path: Path,
+    name: str,
+    version: str,
+    source_repo: str,
+    source_commit: str,
+    sha256: str,
+) -> None:
+    expected = EXPECTED_ARTIFACT_IDENTITIES[name]
+    signer_workflow = expected.get("signerWorkflow")
+    if not signer_workflow:
+        raise StronkPiError(f"artifact {name} missing expected signer workflow")
+    gh = shutil.which("gh")
+    if gh is None:
+        raise StronkPiError("gh CLI is required to verify GitHub artifact attestations")
+    proc = subprocess.run(
+        [
+            gh,
+            "attestation",
+            "verify",
+            str(path),
+            "--repo",
+            source_repo,
+            "--source-digest",
+            source_commit,
+            "--signer-workflow",
+            signer_workflow,
+            "--format",
+            "json",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = nonempty(proc.stderr) or nonempty(proc.stdout) or "no output"
+        raise StronkPiError(f"artifact {name} attestation verification failed: {detail}")
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise StronkPiError(f"artifact {name} attestation output was not JSON") from exc
+    if not isinstance(payload, list) or not payload:
+        raise StronkPiError(f"artifact {name} attestation verification returned no attestations")
+    expected_asset = f"{expected['assetPrefix']}{version}.tgz"
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        for subject in attestation_subjects(item):
+            if not isinstance(subject, dict):
+                continue
+            digest = subject.get("digest")
+            if (
+                subject.get("name") == expected_asset
+                and isinstance(digest, dict)
+                and digest.get("sha256") == sha256
+            ):
+                return
+    raise StronkPiError(f"artifact {name} attestation subject must match {expected_asset}@sha256:{sha256}")
+
+
+def attestation_subjects(item: dict[str, Any]) -> list[Any]:
+    verification = item.get("verificationResult")
+    if isinstance(verification, dict):
+        statement = verification.get("statement")
+        subjects = statement.get("subject") if isinstance(statement, dict) else None
+        if isinstance(subjects, list):
+            return subjects
+
+    attestation = item.get("attestation")
+    bundle = attestation.get("bundle") if isinstance(attestation, dict) else None
+    envelope = bundle.get("dsseEnvelope") if isinstance(bundle, dict) else None
+    payload = envelope.get("payload") if isinstance(envelope, dict) else None
+    if not isinstance(payload, str):
+        return []
+    try:
+        padded_payload = payload + ("=" * (-len(payload) % 4))
+        statement = json.loads(base64.b64decode(padded_payload).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    subjects = statement.get("subject") if isinstance(statement, dict) else None
+    return subjects if isinstance(subjects, list) else []
 
 
 def validate_bundle_contract_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -2571,7 +2721,7 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         release_url = require_string(raw_item, "releaseUrl")
         sha256 = require_string(raw_item, "sha256")
         byte_size = require_int(raw_item, "byteSize")
-        require_string(raw_item, "workflowRunId")
+        workflow_run_id = require_string(raw_item, "workflowRunId")
         attestation = require_string(raw_item, "attestation")
         artifact_compatibility = require_string(raw_item, "compatibilityVersion")
         require_iso_utc(raw_item, "createdAt")
@@ -2590,6 +2740,9 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             raise StronkPiError("sourceCommit must be a full 40-character lowercase SHA")
         if not re.fullmatch(r"[0-9a-f]{64}", sha256):
             raise StronkPiError("sha256 must be a lowercase SHA-256 hex digest")
+        remote_artifact = raw_item.get("artifactUrl") is not None and raw_item.get("artifactPath") is None
+        if remote_artifact and not re.fullmatch(r"\d+", workflow_run_id):
+            raise StronkPiError(f"artifact {name} workflowRunId must be a numeric GitHub Actions run id")
         validate_artifact_identity(
             name=name,
             version=version,
@@ -2599,6 +2752,7 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             artifact_url=raw_item.get("artifactUrl"),
             attestation=attestation,
             sha256=sha256,
+            item=raw_item,
         )
         release_check = check_public_http_url(release_url, "release URL")
         if urlparse(release_check["url"]).scheme != "https":
@@ -2614,6 +2768,15 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         actual_sha = sha256_file(path)
         if actual_sha != sha256:
             raise StronkPiError(f"checksum mismatch for {name}")
+        if remote_artifact:
+            verify_remote_artifact_attestation(
+                path=path,
+                name=name,
+                version=version,
+                source_repo=source_repo,
+                source_commit=source_commit,
+                sha256=sha256,
+            )
         provenance = raw_item.get("provenance")
         if not isinstance(provenance, dict):
             raise StronkPiError("provenance must be an object")
@@ -2624,6 +2787,12 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             ("workflowRunId", raw_item["workflowRunId"]),
         ):
             if provenance.get(key) != expected:
+                raise StronkPiError(f"wrong provenance for {name}: {key}")
+        expected_identity = EXPECTED_ARTIFACT_IDENTITIES[name]
+        for key in ("upstreamRepo", "upstreamVersion", "upstreamCommit"):
+            if key not in expected_identity:
+                continue
+            if provenance.get(key) != expected_identity[key]:
                 raise StronkPiError(f"wrong provenance for {name}: {key}")
         validate_archive(path, expected_name=name, expected_version=version)
         results.append(ArtifactResult(name, version, path, actual_sha, actual_size))
@@ -2639,12 +2808,50 @@ def install_artifacts(results: list[ArtifactResult], dry_run: bool) -> None:
         dest = installs / f"{result.name}-{result.version}"
         tmp = Path(tempfile.mkdtemp(prefix=f".{result.name}.", dir=installs))
         try:
-            with tarfile.open(result.path, "r:gz") as archive:
-                archive.extractall(tmp)
+            safe_extract_artifact(result.path, tmp)
             replace_artifact_dir(tmp, dest)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
+
+
+def safe_extract_artifact(archive_path: Path, dest: Path) -> None:
+    root = dest.resolve()
+    with tarfile.open(archive_path, "r:gz") as archive:
+        members = archive.getmembers()
+        for member in members:
+            name = member.name
+            if not name or name.startswith("/") or WINDOWS_DRIVE_RE.match(name):
+                raise StronkPiError(f"archive member path denied during install: {name}")
+            if ".." in Path(name).parts:
+                raise StronkPiError(f"archive member path traversal denied during install: {name}")
+            if member.issym() or member.islnk():
+                raise StronkPiError(f"archive links are denied during install: {name}")
+            if not (member.isfile() or member.isdir()):
+                raise StronkPiError(f"archive special file denied during install: {name}")
+            target = (root / name).resolve()
+            if not is_relative_to(target, root):
+                raise StronkPiError(f"archive member escapes extraction root during install: {name}")
+        archive.extractall(root, members=members)
+
+
+def verify_installed_artifacts(results: list[ArtifactResult], root: Path) -> list[dict[str, str]]:
+    installed: list[dict[str, str]] = []
+    for result in results:
+        package_root = root / "artifacts" / f"{result.name}-{result.version}" / "package"
+        if not matching_package_root(package_root, name=result.name, version=result.version):
+            raise StronkPiError(
+                f"installed artifact package root failed validation for {result.name}@{result.version}: "
+                f"{package_root}"
+            )
+        installed.append(
+            {
+                "name": result.name,
+                "version": result.version,
+                "packageRoot": str(package_root),
+            }
+        )
+    return installed
 
 
 def replace_artifact_dir(source: Path, dest: Path) -> None:
@@ -2803,10 +3010,13 @@ def cmd_update(args: argparse.Namespace) -> int:
     results = verify_manifest(manifest_path)
     bundle = install_bundle_defaults(dry_run=args.dry_run)
     install_artifacts(results, args.dry_run)
+    installed = [] if args.dry_run else verify_installed_artifacts(results, state_root())
     mode = "dry-run" if args.dry_run else "installed"
     print(f"stronkpi-setup update: {mode} verified {len(results)} artifact(s)")
     for result in results:
         print(f"- {result.name} {result.version} {result.sha256}")
+    for item in installed:
+        print(f"- materialized {item['name']} {item['version']} {item['packageRoot']}")
     print(f"stronkpi-setup update: {mode} bundle config {bundle['roleManifest']}")
     print(f"stronkpi-setup update: {mode} generated agents {bundle['generatedAgentsDir']}")
     return 0
@@ -3235,6 +3445,7 @@ def build_pi_launch_args(
     if subagent_status and subagent_status.get("enabled"):
         for extension_path in subagent_status.get("extensionPaths") or []:
             launch_args.extend(["--extension", str(extension_path)])
+        launch_args.extend(["--exclude-tools", "subagent"])
     if mcp_status and mcp_status.get("enabled"):
         launch_args.extend(
             [
