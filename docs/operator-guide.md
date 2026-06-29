@@ -83,7 +83,7 @@ Important managed paths are:
 - `~/.stronk-pi/config/pi/web-search.json`
 - project `.mcp.json`, generated from `.mcp-tools`
 - `~/.stronk-pi/agent/sessions/`
-- `~/.stronk-pi/agent/extensions/pi-intercom`
+- `~/.stronk-pi/agent/extensions/stronk-pi-intercom`
 - `~/.stronk-pi/logs/`, `~/.stronk-pi/cache/`, and `~/.stronk-pi/tmp/`
 
 The harness should not create `~/.pi`, `~/.config/pi`, `~/.local/share/pi`, `~/.cache/pi`, or `~/.stronk-pi/home` during normal launch.

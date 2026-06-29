@@ -26,7 +26,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
@@ -40,12 +40,12 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
     Path(".agents") / "roles" / "stronk",
     Path(".agents") / "codex" / "roles" / "stronk",
 )
-DEFAULT_PLUGIN_VERSION = "0.2.2"
+DEFAULT_PLUGIN_VERSION = "0.2.3"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 DEFAULT_PACKAGE_PINS = {
     "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),
-    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.4"),
-    "intercom": ("pi-intercom", "0.6.0"),
+    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.5"),
+    "intercom": ("stronk-pi-intercom", "0.6.0-stronk.1"),
 }
 SUBAGENT_RUNTIME_PACKAGE_KEYS = ("subagents", "intercom")
 SHARED_HOOK_TIMEOUT_SEC = 5.0
@@ -232,7 +232,33 @@ EXPECTED_ARTIFACT_IDENTITIES = {
         "upstreamVersion": "0.22.0",
         "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486",
     },
+    "stronk-pi-intercom": {
+        "sourceRepo": "EYYCHEEV/stronk-pi-intercom",
+        "tagPrefix": "stronk-pi-intercom-v",
+        "assetPrefix": "stronk-pi-intercom-",
+        "signerWorkflow": "github.com/EYYCHEEV/stronk-pi-intercom/.github/workflows/release-artifact.yml",
+        "upstreamRepo": "nicobailon/pi-intercom",
+        "upstreamVersion": "0.6.0",
+        "upstreamCommit": "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457",
+        "seedType": "npm-tarball",
+        "seedPackage": "pi-intercom",
+        "seedVersion": "0.6.0",
+        "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
+        "seedTarballSha256": "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818",
+        "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6",
+    },
 }
+ARTIFACT_PROVENANCE_METADATA_FIELDS = (
+    "upstreamRepo",
+    "upstreamVersion",
+    "upstreamCommit",
+    "seedType",
+    "seedPackage",
+    "seedVersion",
+    "seedTarballUrl",
+    "seedTarballSha256",
+    "sourceArchiveSha256",
+)
 PACKAGE_ARCHIVE_REQUIRED_MEMBERS = {
     "stronk-pi-plugin": (
         "package/src/index.mjs",
@@ -245,6 +271,22 @@ PACKAGE_ARCHIVE_REQUIRED_MEMBERS = {
         "package/agents/delegate.md",
         "package/agents/worker.md",
     ),
+    "stronk-pi-intercom": (
+        "package/index.ts",
+        "package/config.ts",
+        "package/types.ts",
+        "package/state-root.ts",
+        "package/reply-tracker.ts",
+        "package/broker/broker.ts",
+        "package/broker/client.ts",
+        "package/broker/framing.ts",
+        "package/broker/paths.ts",
+        "package/broker/spawn.ts",
+        "package/ui/compose.ts",
+        "package/ui/inline-message.ts",
+        "package/ui/session-list.ts",
+        "package/skills/stronk-pi-intercom/SKILL.md",
+    ),
 }
 RUNTIME_PACKAGE_REQUIRED_PATHS = {
     "stronk-pi-subagents": (
@@ -254,6 +296,22 @@ RUNTIME_PACKAGE_REQUIRED_PATHS = {
         "src/agents/user-agent-dir.ts",
         "agents/delegate.md",
         "agents/worker.md",
+    ),
+    "stronk-pi-intercom": (
+        "index.ts",
+        "config.ts",
+        "types.ts",
+        "state-root.ts",
+        "reply-tracker.ts",
+        "broker/broker.ts",
+        "broker/client.ts",
+        "broker/framing.ts",
+        "broker/paths.ts",
+        "broker/spawn.ts",
+        "ui/compose.ts",
+        "ui/inline-message.ts",
+        "ui/session-list.ts",
+        "skills/stronk-pi-intercom/SKILL.md",
     ),
 }
 SUBAGENTS_LEGACY_PARENT_SKILL_VERSION = "0.22.0-stronk.3"
@@ -372,6 +430,7 @@ BLOCKED_UPSTREAM_REPOSITORIES = (
     "earendil-works/pi",
     "badlogic/pi-mono",
     "nicobailon/pi-subagents",
+    "nicobailon/pi-intercom",
 )
 BLOCKED_UPSTREAM_REPO_RE = re.compile(
     r"(?:github\.com[:/])?(?:"
@@ -1270,7 +1329,7 @@ def state_web_search_config_path(root: Path) -> Path:
     return state_config_root(root) / "pi" / "web-search.json"
 
 
-def state_intercom_bridge_path(root: Path, name: str = "pi-intercom") -> Path:
+def state_intercom_bridge_path(root: Path, name: str = "stronk-pi-intercom") -> Path:
     return state_agent_dir(root) / "extensions" / name
 
 
@@ -1646,8 +1705,8 @@ def role_extensions(pi_cfg: dict[str, Any], root: Path) -> list[str]:
     extensions = string_list_config(pi_cfg.get("extensions") or [], "pi.extensions")
     resolved: list[str] = []
     for item in extensions:
-        if item == "pi-intercom":
-            resolved.append(str(state_intercom_bridge_path(root, "pi-intercom")))
+        if item == "stronk-pi-intercom":
+            resolved.append(str(state_intercom_bridge_path(root, "stronk-pi-intercom")))
         elif item == "~/.stronk-pi" or item.startswith("~/.stronk-pi/"):
             resolved.append(str(expand_runtime_path(item, root)))
         else:
@@ -2473,7 +2532,7 @@ def inspect_subagent_runtime(root: Path) -> dict[str, Any]:
         if packages[key]["installed"]
     ]
     intercom_package = packages["intercom"]
-    intercom_bridge_path = state_intercom_bridge_path(root, "pi-intercom")
+    intercom_bridge_path = state_intercom_bridge_path(root, "stronk-pi-intercom")
     intercom_bridge_target = (
         Path(str(intercom_package["packagePath"])) if intercom_package["installed"] else None
     )
@@ -2512,7 +2571,7 @@ def prepare_subagent_runtime(root: Path) -> dict[str, Any]:
         status["intercomBridgeChanged"] = ensure_runtime_symlink(
             bridge_path,
             intercom_target,
-            "pi-intercom bridge",
+            "stronk-pi-intercom bridge",
         )
         status["intercomBridgeLinked"] = runtime_symlink_matches(bridge_path, intercom_target)
     return status
@@ -2708,13 +2767,49 @@ def validate_artifact_identity(
     expected_attestation = f"github-attestation:{expected_repo}/{expected_asset}@sha256:{sha256}"
     if attestation != expected_attestation:
         raise StronkPiError(f"artifact {name} attestation must be {expected_attestation}")
-    for field in ("upstreamRepo", "upstreamVersion", "upstreamCommit"):
+    for field in ARTIFACT_PROVENANCE_METADATA_FIELDS:
         expected_value = expected.get(field)
         if expected_value is None:
             continue
         value = require_string(item, field)
         if value != expected_value:
             raise StronkPiError(f"artifact {name} {field} must be {expected_value}")
+
+
+def validate_required_artifact_set(artifacts: list[Any]) -> None:
+    names: list[str] = []
+    for index, raw_item in enumerate(artifacts):
+        if not isinstance(raw_item, dict):
+            raise StronkPiError(f"artifact {index} must be an object")
+        names.append(require_string(raw_item, "name"))
+    duplicate_names = sorted({name for name in names if names.count(name) > 1})
+    if duplicate_names:
+        raise StronkPiError("duplicate artifact identity: " + ", ".join(duplicate_names))
+    expected_names = set(EXPECTED_ARTIFACT_IDENTITIES)
+    actual_names = set(names)
+    missing = sorted(expected_names - actual_names)
+    extra = sorted(actual_names - expected_names)
+    if missing:
+        raise StronkPiError("manifest missing required artifact(s): " + ", ".join(missing))
+    if extra:
+        raise StronkPiError("manifest includes unsupported artifact(s): " + ", ".join(extra))
+
+
+def validate_runtime_artifact_pins(pins: dict[str, Any], artifact_versions: dict[str, str]) -> None:
+    expected_runtime_artifacts = {
+        "subagents": "stronk-pi-subagents",
+        "intercom": "stronk-pi-intercom",
+    }
+    for pin_key, artifact_name in expected_runtime_artifacts.items():
+        pin = pins.get(pin_key)
+        if not isinstance(pin, dict):
+            raise StronkPiError(f"manifest bundle.packagePins.{pin_key} must be an object")
+        if pin.get("name") != artifact_name:
+            raise StronkPiError(f"manifest bundle.packagePins.{pin_key}.name must be {artifact_name}")
+        if pin.get("version") != artifact_versions.get(artifact_name):
+            raise StronkPiError(
+                f"manifest bundle.packagePins.{pin_key}.version must match {artifact_name} artifact"
+            )
 
 
 def verify_remote_artifact_attestation(
@@ -2843,11 +2938,13 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
         raise StronkPiError("manifest schemaVersion must be 1")
     compatibility = require_string(manifest, "compatibilityVersion")
     fail_if_floating("compatibilityVersion", compatibility)
-    validate_bundle_contract_manifest(manifest)
+    bundle_info = validate_bundle_contract_manifest(manifest)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise StronkPiError("manifest artifacts must be an array")
+    validate_required_artifact_set(artifacts)
     results: list[ArtifactResult] = []
+    artifact_versions: dict[str, str] = {}
     for index, raw_item in enumerate(artifacts):
         if not isinstance(raw_item, dict):
             raise StronkPiError(f"artifact {index} must be an object")
@@ -2927,13 +3024,15 @@ def verify_manifest(manifest_path: Path) -> list[ArtifactResult]:
             if provenance.get(key) != expected:
                 raise StronkPiError(f"wrong provenance for {name}: {key}")
         expected_identity = EXPECTED_ARTIFACT_IDENTITIES[name]
-        for key in ("upstreamRepo", "upstreamVersion", "upstreamCommit"):
+        artifact_versions[name] = version
+        for key in ARTIFACT_PROVENANCE_METADATA_FIELDS:
             if key not in expected_identity:
                 continue
             if provenance.get(key) != expected_identity[key]:
                 raise StronkPiError(f"wrong provenance for {name}: {key}")
         validate_archive(path, expected_name=name, expected_version=version)
         results.append(ArtifactResult(name, version, path, actual_sha, actual_size))
+    validate_runtime_artifact_pins(bundle_info["packagePins"], artifact_versions)
     return results
 
 

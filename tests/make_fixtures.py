@@ -16,16 +16,29 @@ ARTIFACT_DIR = ROOT / "tests" / "fixtures" / "artifacts"
 MANIFEST_DIR = ROOT / "tests" / "fixtures" / "manifests"
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 PLUGIN_REPO = "EYYCHEEV/stronk-pi-plugin"
-PLUGIN_VERSION = "0.2.2"
+PLUGIN_VERSION = "0.2.3"
 PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
 PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
 SUBAGENTS_REPO = "EYYCHEEV/stronk-pi-subagents"
-SUBAGENTS_VERSION = "0.22.0-stronk.4"
+SUBAGENTS_VERSION = "0.22.0-stronk.5"
 SUBAGENTS_TAG = f"stronk-pi-subagents-v{SUBAGENTS_VERSION}"
 SUBAGENTS_ASSET = f"stronk-pi-subagents-{SUBAGENTS_VERSION}.tgz"
 SUBAGENTS_UPSTREAM_REPO = "nicobailon/pi-subagents"
 SUBAGENTS_UPSTREAM_VERSION = "0.22.0"
 SUBAGENTS_UPSTREAM_COMMIT = "1fd371d2a068458741a15507edc6cd49a9807486"
+INTERCOM_REPO = "EYYCHEEV/stronk-pi-intercom"
+INTERCOM_VERSION = "0.6.0-stronk.1"
+INTERCOM_TAG = f"stronk-pi-intercom-v{INTERCOM_VERSION}"
+INTERCOM_ASSET = f"stronk-pi-intercom-{INTERCOM_VERSION}.tgz"
+INTERCOM_UPSTREAM_REPO = "nicobailon/pi-intercom"
+INTERCOM_UPSTREAM_VERSION = "0.6.0"
+INTERCOM_UPSTREAM_COMMIT = "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457"
+INTERCOM_SEED_TYPE = "npm-tarball"
+INTERCOM_SEED_PACKAGE = "pi-intercom"
+INTERCOM_SEED_VERSION = "0.6.0"
+INTERCOM_SEED_TARBALL_URL = "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz"
+INTERCOM_SEED_TARBALL_SHA256 = "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818"
+INTERCOM_SOURCE_ARCHIVE_SHA256 = "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6"
 
 
 def bundle_contract() -> dict:
@@ -48,7 +61,7 @@ def bundle_contract() -> dict:
         "packagePins": {
             "mcp_adapter": {"name": "pi-mcp-adapter", "version": "2.9.0"},
             "subagents": {"name": "stronk-pi-subagents", "version": SUBAGENTS_VERSION},
-            "intercom": {"name": "pi-intercom", "version": "0.6.0"},
+            "intercom": {"name": "stronk-pi-intercom", "version": INTERCOM_VERSION},
             "jiti": {"name": "jiti", "version": "2.7.0"},
             "ask_user": {"name": "pi-ask-user", "version": "0.8.0"},
             "tsx": {"name": "tsx", "version": "4.22.4"},
@@ -146,7 +159,60 @@ def subagents_artifact(artifact_path: Path, sha: str, size: int) -> dict:
     }
 
 
-def base_manifest(plugin_path: Path, plugin_sha: str, plugin_size: int, subagents_path: Path, subagents_sha: str, subagents_size: int) -> dict:
+def intercom_artifact(artifact_path: Path, sha: str, size: int) -> dict:
+    rel = artifact_path if not artifact_path.is_absolute() else artifact_path.relative_to(MANIFEST_DIR)
+    return {
+        "name": "stronk-pi-intercom",
+        "version": INTERCOM_VERSION,
+        "sourceRepo": INTERCOM_REPO,
+        "sourceCommit": SOURCE_COMMIT,
+        "immutableTag": INTERCOM_TAG,
+        "releaseUrl": f"https://github.com/{INTERCOM_REPO}/releases/tag/{INTERCOM_TAG}",
+        "artifactPath": rel.as_posix(),
+        "sha256": sha,
+        "byteSize": size,
+        "workflowRunId": "fixture-run-intercom",
+        "attestation": github_attestation(INTERCOM_REPO, INTERCOM_ASSET, sha),
+        "compatibilityVersion": "stronkpi-setup-v1",
+        "createdAt": "2026-06-16T00:00:00Z",
+        "upstreamRepo": INTERCOM_UPSTREAM_REPO,
+        "upstreamVersion": INTERCOM_UPSTREAM_VERSION,
+        "upstreamCommit": INTERCOM_UPSTREAM_COMMIT,
+        "seedType": INTERCOM_SEED_TYPE,
+        "seedPackage": INTERCOM_SEED_PACKAGE,
+        "seedVersion": INTERCOM_SEED_VERSION,
+        "seedTarballUrl": INTERCOM_SEED_TARBALL_URL,
+        "seedTarballSha256": INTERCOM_SEED_TARBALL_SHA256,
+        "sourceArchiveSha256": INTERCOM_SOURCE_ARCHIVE_SHA256,
+        "provenance": {
+            "sourceRepo": INTERCOM_REPO,
+            "sourceCommit": SOURCE_COMMIT,
+            "immutableTag": INTERCOM_TAG,
+            "workflowRunId": "fixture-run-intercom",
+            "upstreamRepo": INTERCOM_UPSTREAM_REPO,
+            "upstreamVersion": INTERCOM_UPSTREAM_VERSION,
+            "upstreamCommit": INTERCOM_UPSTREAM_COMMIT,
+            "seedType": INTERCOM_SEED_TYPE,
+            "seedPackage": INTERCOM_SEED_PACKAGE,
+            "seedVersion": INTERCOM_SEED_VERSION,
+            "seedTarballUrl": INTERCOM_SEED_TARBALL_URL,
+            "seedTarballSha256": INTERCOM_SEED_TARBALL_SHA256,
+            "sourceArchiveSha256": INTERCOM_SOURCE_ARCHIVE_SHA256,
+        }
+    }
+
+
+def base_manifest(
+    plugin_path: Path,
+    plugin_sha: str,
+    plugin_size: int,
+    subagents_path: Path,
+    subagents_sha: str,
+    subagents_size: int,
+    intercom_path: Path,
+    intercom_sha: str,
+    intercom_size: int,
+) -> dict:
     return {
         "schemaVersion": 1,
         "compatibilityVersion": "stronkpi-setup-v1",
@@ -154,12 +220,33 @@ def base_manifest(plugin_path: Path, plugin_sha: str, plugin_size: int, subagent
         "artifacts": [
             plugin_artifact(plugin_path, plugin_sha, plugin_size),
             subagents_artifact(subagents_path, subagents_sha, subagents_size),
+            intercom_artifact(intercom_path, intercom_sha, intercom_size),
         ]
     }
 
 
-def base_https_manifest(artifact_url: str, plugin_sha: str, plugin_size: int, subagents_path: Path, subagents_sha: str, subagents_size: int) -> dict:
-    manifest = base_manifest(Path("../artifacts") / PLUGIN_ASSET, plugin_sha, plugin_size, subagents_path, subagents_sha, subagents_size)
+def base_https_manifest(
+    artifact_url: str,
+    plugin_sha: str,
+    plugin_size: int,
+    subagents_path: Path,
+    subagents_sha: str,
+    subagents_size: int,
+    intercom_path: Path,
+    intercom_sha: str,
+    intercom_size: int,
+) -> dict:
+    manifest = base_manifest(
+        Path("../artifacts") / PLUGIN_ASSET,
+        plugin_sha,
+        plugin_size,
+        subagents_path,
+        subagents_sha,
+        subagents_size,
+        intercom_path,
+        intercom_sha,
+        intercom_size,
+    )
     item = manifest["artifacts"][0]
     item.pop("artifactPath")
     item["artifactUrl"] = artifact_url
@@ -183,6 +270,8 @@ def main() -> None:
     hardlink = ARTIFACT_DIR / "hardlink-escape.tgz"
     subagents = ARTIFACT_DIR / SUBAGENTS_ASSET
     subagents_stub = ARTIFACT_DIR / "stronk-pi-subagents-stub.tgz"
+    intercom = ARTIFACT_DIR / INTERCOM_ASSET
+    intercom_stub = ARTIFACT_DIR / "stronk-pi-intercom-stub.tgz"
 
     write_tgz(
         good,
@@ -236,11 +325,51 @@ def main() -> None:
             ).encode(),
         },
     )
+    write_tgz(
+        intercom,
+        {
+            "package/package.json": (
+                json.dumps(
+                    {
+                        "name": "stronk-pi-intercom",
+                        "version": INTERCOM_VERSION,
+                        "pi": {"extensions": ["./index.ts"], "skills": ["./skills"]},
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode(),
+            "package/index.ts": b"export default function intercom() {}\n",
+            "package/config.ts": b"export const configPath = 'state-root-aware';\n",
+            "package/types.ts": b"export type Intercom = object;\n",
+            "package/state-root.ts": b"export function getStronkStateRoot() { return ''; }\n",
+            "package/reply-tracker.ts": b"export class ReplyTracker {}\n",
+            "package/broker/broker.ts": b"export function broker() {}\n",
+            "package/broker/client.ts": b"export function client() {}\n",
+            "package/broker/framing.ts": b"export function frame() {}\n",
+            "package/broker/paths.ts": b"export function paths() {}\n",
+            "package/broker/spawn.ts": b"export function spawnBroker() {}\n",
+            "package/ui/compose.ts": b"export function compose() {}\n",
+            "package/ui/inline-message.ts": b"export function inlineMessage() {}\n",
+            "package/ui/session-list.ts": b"export function sessionList() {}\n",
+            "package/skills/stronk-pi-intercom/SKILL.md": b"---\ndescription: Stronk Pi intercom\n---\n",
+        },
+    )
+    write_tgz(
+        intercom_stub,
+        {
+            "package/package.json": (
+                json.dumps({"name": "stronk-pi-intercom", "version": INTERCOM_VERSION}, sort_keys=True) + "\n"
+            ).encode(),
+        },
+    )
 
     good_sha = digest(good)
     good_size = good.stat().st_size
     subagents_sha = digest(subagents)
     subagents_size = subagents.stat().st_size
+    intercom_sha = digest(intercom)
+    intercom_size = intercom.stat().st_size
     good_manifest = base_manifest(
         Path("../artifacts") / good.name,
         good_sha,
@@ -248,6 +377,9 @@ def main() -> None:
         Path("../artifacts") / subagents.name,
         subagents_sha,
         subagents_size,
+        Path("../artifacts") / intercom.name,
+        intercom_sha,
+        intercom_size,
     )
     write_manifest("good-local.json", good_manifest)
     write_manifest(
@@ -259,6 +391,9 @@ def main() -> None:
             Path("../artifacts") / subagents.name,
             subagents_sha,
             subagents_size,
+            Path("../artifacts") / intercom.name,
+            intercom_sha,
+            intercom_size,
         ),
     )
 
@@ -310,6 +445,9 @@ def main() -> None:
         Path("../artifacts") / subagents.name,
         subagents_sha,
         subagents_size,
+        Path("../artifacts") / intercom.name,
+        intercom_sha,
+        intercom_size,
     )
     write_manifest("wrong-package-identity.json", wrong_identity)
 
@@ -333,6 +471,9 @@ def main() -> None:
             Path("../artifacts") / subagents.name,
             subagents_sha,
             subagents_size,
+            Path("../artifacts") / intercom.name,
+            intercom_sha,
+            intercom_size,
         )
         write_manifest(filename, manifest)
 
@@ -345,6 +486,21 @@ def main() -> None:
     )
     subagents_stub_manifest["artifacts"][1] = stub_item
     write_manifest("subagents-stub-denied.json", subagents_stub_manifest)
+
+    intercom_stub_manifest = json.loads(json.dumps(good_manifest))
+    intercom_stub_sha = digest(intercom_stub)
+    intercom_stub_item = intercom_artifact(
+        Path("../artifacts") / intercom_stub.name,
+        intercom_stub_sha,
+        intercom_stub.stat().st_size,
+    )
+    intercom_stub_manifest["artifacts"][2] = intercom_stub_item
+    write_manifest("intercom-stub-denied.json", intercom_stub_manifest)
+
+    missing_intercom = json.loads(json.dumps(good_manifest))
+    missing_intercom["artifacts"] = missing_intercom["artifacts"][:2]
+    missing_intercom["bundle"]["packagePins"]["intercom"] = {"name": "pi-intercom", "version": "0.6.0"}
+    write_manifest("legacy-intercom-only-denied.json", missing_intercom)
 
     sums = [f"{digest(path)}  {path.name}" for path in sorted(ARTIFACT_DIR.glob("*.tgz"))]
     (ARTIFACT_DIR / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n", encoding="utf-8")

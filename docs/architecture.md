@@ -157,7 +157,7 @@ runtime artifacts, sessions, logs, caches, and temporary files:
 - `~/.stronk-pi/config/`
 - `~/.stronk-pi/agent/`
 - `~/.stronk-pi/agent/sessions/`
-- `~/.stronk-pi/agent/extensions/pi-intercom`
+- `~/.stronk-pi/agent/extensions/stronk-pi-intercom`
 - `~/.stronk-pi/artifacts/`
 - `~/.stronk-pi/pi-fork-runtime/`
 - `~/.stronk-pi/logs/`, `~/.stronk-pi/cache/`, and `~/.stronk-pi/tmp/`

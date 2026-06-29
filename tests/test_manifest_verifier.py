@@ -33,6 +33,8 @@ guard = load_guard()
 PLUGIN_VERSION = guard.DEFAULT_PLUGIN_VERSION
 PLUGIN_TAG = f"stronk-pi-plugin-v{PLUGIN_VERSION}"
 PLUGIN_ASSET = f"stronk-pi-plugin-{PLUGIN_VERSION}.tgz"
+INTERCOM_PACKAGE = "stronk-pi-intercom"
+INTERCOM_VERSION = "0.6.0-stronk.1"
 
 
 # Inherited Stronk Pi control-plane environment variables that can redirect state-root
@@ -98,8 +100,11 @@ class ManifestVerifierTests(StronkEnvIsolationMixin, unittest.TestCase):
 
     def test_good_local_manifest_verifies(self):
         results = guard.verify_manifest(self.manifest("good-local.json"))
-        self.assertEqual(len(results), 2)
-        self.assertEqual([result.name for result in results], ["stronk-pi-plugin", "stronk-pi-subagents"])
+        self.assertEqual(len(results), 3)
+        self.assertEqual(
+            [result.name for result in results],
+            ["stronk-pi-plugin", "stronk-pi-subagents", INTERCOM_PACKAGE],
+        )
 
     def test_good_https_artifact_manifest_verifies_with_mocked_download(self):
         expected_url = (
@@ -146,8 +151,11 @@ class ManifestVerifierTests(StronkEnvIsolationMixin, unittest.TestCase):
             else:
                 os.environ["STRONKPI_NO_NETWORK"] = old_no_network
 
-        self.assertEqual(len(results), 2)
-        self.assertEqual([result.name for result in results], ["stronk-pi-plugin", "stronk-pi-subagents"])
+        self.assertEqual(len(results), 3)
+        self.assertEqual(
+            [result.name for result in results],
+            ["stronk-pi-plugin", "stronk-pi-subagents", INTERCOM_PACKAGE],
+        )
         verify_attestation.assert_called_once()
         self.assertEqual(verify_attestation.call_args.kwargs["name"], "stronk-pi-plugin")
 
@@ -398,6 +406,43 @@ class ManifestVerifierTests(StronkEnvIsolationMixin, unittest.TestCase):
     def test_subagents_stub_archive_fails(self):
         self.assert_manifest_fails("subagents-stub-denied.json", "required package content")
 
+    def test_intercom_stub_archive_fails(self):
+        self.assert_manifest_fails("intercom-stub-denied.json", "required package content")
+
+    def test_legacy_intercom_only_manifest_fails(self):
+        self.assert_manifest_fails("legacy-intercom-only-denied.json", "stronk-pi-intercom")
+
+    def test_intercom_wrong_seed_metadata_fails(self):
+        path = self.manifest("good-local.json")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        item = manifest["artifacts"][2]
+        item["seedTarballSha256"] = "0" * 64
+        item["provenance"]["seedTarballSha256"] = "0" * 64
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            temp_path = Path(handle.name)
+        try:
+            with self.assertRaisesRegex(guard.StronkPiError, "seedTarballSha256"):
+                guard.verify_manifest(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_intercom_wrong_source_repo_fails(self):
+        path = self.manifest("good-local.json")
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        item = manifest["artifacts"][2]
+        item["sourceRepo"] = "nicobailon/pi-intercom"
+        item["releaseUrl"] = f"https://github.com/nicobailon/pi-intercom/releases/tag/stronk-pi-intercom-v{INTERCOM_VERSION}"
+        item["provenance"]["sourceRepo"] = "nicobailon/pi-intercom"
+        with tempfile.NamedTemporaryFile("w", suffix=".json", dir=path.parent, delete=False, encoding="utf-8") as handle:
+            json.dump(manifest, handle)
+            temp_path = Path(handle.name)
+        try:
+            with self.assertRaisesRegex(guard.StronkPiError, "sourceRepo"):
+                guard.verify_manifest(temp_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     def test_archive_escape_fixtures_fail(self):
         for name, expected in (
             ("archive-traversal-denied.json", "traversal"),
@@ -588,7 +633,10 @@ class ManifestVerifierTests(StronkEnvIsolationMixin, unittest.TestCase):
             self.assertEqual(env["PI_CODING_AGENT_DIR"], str(root / "agent"))
             self.assertEqual(env["PI_CODING_AGENT_SESSION_DIR"], str(root / "agent" / "sessions"))
             self.assertEqual(env["STRONK_PI_WEB_SEARCH_CONFIG"], str(root / "config" / "pi" / "web-search.json"))
-            self.assertEqual(env["STRONK_PI_INTERCOM_BRIDGE"], str(root / "agent" / "extensions" / "pi-intercom"))
+            self.assertEqual(
+                env["STRONK_PI_INTERCOM_BRIDGE"],
+                str(root / "agent" / "extensions" / "stronk-pi-intercom"),
+            )
             self.assertFalse((root / "home").exists())
             code_hook = json.loads(env["STRONK_PI_CODEX_HOOK_COMMAND_JSON"])
             self.assertEqual(code_hook, [str(Path(sys.executable).resolve(strict=False)), str(GUARD_PATH), "codex-hook"])

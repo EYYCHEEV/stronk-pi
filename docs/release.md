@@ -22,7 +22,7 @@ First publish the matching plugin artifact from `stronk-pi-plugin`.
 Then download that release's `BUILD-MANIFEST.json` and import it:
 
 ```zsh
-python3 scripts/import-plugin-release.py /tmp/stronk-pi-plugin-v0.2.1/BUILD-MANIFEST.json
+python3 scripts/import-artifact-release.py /tmp/stronk-pi-plugin-v0.2.1/BUILD-MANIFEST.json
 STRONKPI_NO_NETWORK=1 zsh scripts/verify-release-candidate.sh
 ```
 
@@ -34,6 +34,8 @@ The import command updates:
 - deterministic manifest fixtures
 
 Do not import a plugin version before its release artifact and attestation exist.
+
+`scripts/import-plugin-release.py` remains as a compatibility wrapper for plugin-only imports.
 
 ## Import Subagents Fork Release
 
@@ -58,16 +60,46 @@ The guard requires the tarball to contain the expected package source, bundled a
 Release `0.22.0-stronk.4` uses `skills/stronkpi-agents/SKILL.md`; legacy release `0.22.0-stronk.3` used `skills/pi-subagents/SKILL.md`.
 A `package.json`-only tarball or runtime package root must fail validation.
 
-After updating the fork entry, regenerate deterministic fixtures and run:
+After publishing the fork release, download its `BUILD-MANIFEST.json` and import it:
 
 ```zsh
-python3 tests/make_fixtures.py
+python3 scripts/import-artifact-release.py /tmp/stronk-pi-subagents-v0.22.0-stronk.5/BUILD-MANIFEST.json
 STRONKPI_NO_NETWORK=1 zsh scripts/verify-release-candidate.sh
 ```
 
+The importer updates `manifests/current.json`, `config/defaults.toml`, `lib/stronk-pi-guard.py`, and deterministic fixture constants.
+
+## Import Intercom Fork Release
+
+The `stronk-pi-intercom` fork is maintained in `EYYCHEEV/stronk-pi-intercom`.
+The first fork artifact is based on `nicobailon/pi-intercom@0.6.0` commit `5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457`.
+
+After publishing the fork release, download its `BUILD-MANIFEST.json` and import it:
+
+```zsh
+python3 scripts/import-artifact-release.py /tmp/stronk-pi-intercom-v0.6.0-stronk.1/BUILD-MANIFEST.json
+STRONKPI_NO_NETWORK=1 zsh scripts/verify-release-candidate.sh
+```
+
+The setup manifest entry must include:
+
+- `name`: `stronk-pi-intercom`
+- `sourceRepo`: `EYYCHEEV/stronk-pi-intercom`
+- `upstreamRepo`: `nicobailon/pi-intercom`
+- `upstreamVersion`: `0.6.0`
+- `upstreamCommit`: `5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457`
+- `seedType`: `npm-tarball`
+- `seedPackage`: `pi-intercom`
+- `seedVersion`: `0.6.0`
+- `seedTarballSha256`: `76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818`
+- `sourceArchiveSha256`: `3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6`
+
+The guard requires the tarball and installed runtime package to contain the state-root aware intercom bridge, broker, UI helpers, and `skills/stronk-pi-intercom/SKILL.md`.
+Legacy `pi-intercom`-only manifests must fail validation.
+
 ## Online Gate
 
-After importing a plugin or subagents fork release, verify the public artifact URL:
+After importing a plugin, subagents, or intercom fork release, verify the public artifact URL:
 
 ```zsh
 bin/stronkpi-setup update --dry-run --manifest manifests/current.json
@@ -120,5 +152,7 @@ Do not run cleanup with `--apply` unless the dry-run has been reviewed.
 Before plugin import, close or revert the setup version PR.
 After plugin import but before live update, revert the distribution PR.
 After subagents fork import but before live update, revert the manifest package pin and remove the `stronk-pi-subagents` artifact entry in a new PR.
+After intercom fork import but before live update, revert the manifest package pin and remove the `stronk-pi-intercom` artifact entry in a new PR.
 After live update, restore the previous manifest, package pins, and plugin default version in a new PR, merge it, and rerun `bin/stronkpi-setup update --manifest manifests/current.json`.
 Remove or ignore `~/.stronk-pi/artifacts/stronk-pi-subagents-0.22.0-stronk.4/package` after rollback if the fork artifact is no longer selected.
+Remove or ignore `~/.stronk-pi/artifacts/stronk-pi-intercom-0.6.0-stronk.1/package` after rollback if the fork artifact is no longer selected.

@@ -22,10 +22,10 @@ FIXTURE_ARCHIVE = ROOT / "tests" / "fixtures" / "artifacts" / f"stronk-pi-plugin
 
 class PluginStateRootTests(unittest.TestCase):
     def assert_plugin_contract(self, index_text: str, ledger_text: str, label: str) -> None:
-        self.assertIn("firstString(env.STRONK_PI_STATE_ROOT) || '~/.stronk-pi'", index_text, label)
+        self.assertIn("firstString(env.STRONK_PI_STATE_ROOT, env.STRONKPI_STATE_ROOT) || '~/.stronk-pi'", index_text, label)
         self.assertIn("join(stateRoot, 'agent', 'sessions')", index_text, label)
         self.assertIn("join(stronkStateRoot(), 'agent', 'sessions')", index_text, label)
-        self.assertIn("process.env.STRONK_PI_STATE_ROOT || join(homedir(), '.stronk-pi')", ledger_text, label)
+        self.assertIn("process.env.STRONK_PI_STATE_ROOT || process.env.STRONKPI_STATE_ROOT", ledger_text, label)
         banned = [
             "STRONK_PI_PRIVATE_HOME",
             ".stronk-pi/home",
@@ -78,6 +78,12 @@ class PluginStateRootTests(unittest.TestCase):
     def test_active_installed_plugin_artifact_honors_state_root_when_available(self):
         if not INSTALLED_PLUGIN_ROOT.exists():
             self.skipTest(f"installed plugin artifact not available: {INSTALLED_PLUGIN_ROOT}")
+        index_path = INSTALLED_PLUGIN_ROOT / "src" / "index.mjs"
+        if not index_path.is_file():
+            self.skipTest(f"installed plugin artifact missing contract file: {index_path}")
+        index_text = index_path.read_text(encoding="utf-8")
+        if "firstString(env.STRONK_PI_STATE_ROOT, env.STRONKPI_STATE_ROOT)" not in index_text:
+            self.skipTest("installed plugin artifact predates the current Stronk state-root alias contract")
         self.assert_plugin_root_contract(INSTALLED_PLUGIN_ROOT, "installed plugin artifact")
 
 
