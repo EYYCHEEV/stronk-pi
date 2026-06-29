@@ -26,7 +26,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 CONFIG_SCHEMA_VERSION = 1
 BUNDLE_CONTRACT_VERSION = "stronkpi-setup-v1"
 MANAGED_MARKER = 'managed_by = "stronk-pi"'
@@ -40,11 +40,11 @@ DEFAULT_CODEX_ROLE_DIR_CANDIDATES = (
     Path(".agents") / "roles" / "stronk",
     Path(".agents") / "codex" / "roles" / "stronk",
 )
-DEFAULT_PLUGIN_VERSION = "0.2.2"
+DEFAULT_PLUGIN_VERSION = "0.2.3"
 DEFAULT_PLUGIN_RELATIVE = Path("artifacts") / f"stronk-pi-plugin-{DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
 DEFAULT_PACKAGE_PINS = {
     "mcp_adapter": ("pi-mcp-adapter", "2.9.0"),
-    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.4"),
+    "subagents": ("stronk-pi-subagents", "0.22.0-stronk.5"),
     "intercom": ("stronk-pi-intercom", "0.6.0-stronk.1"),
 }
 SUBAGENT_RUNTIME_PACKAGE_KEYS = ("subagents", "intercom")

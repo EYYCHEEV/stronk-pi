@@ -27,10 +27,8 @@ def load_guard():
 
 
 guard = load_guard()
-SUBAGENTS_PACKAGE = "stronk-pi-subagents"
-SUBAGENTS_VERSION = "0.22.0-stronk.4"
-INTERCOM_PACKAGE = "stronk-pi-intercom"
-INTERCOM_VERSION = "0.6.0-stronk.1"
+SUBAGENTS_PACKAGE, SUBAGENTS_VERSION = guard.DEFAULT_PACKAGE_PINS["subagents"]
+INTERCOM_PACKAGE, INTERCOM_VERSION = guard.DEFAULT_PACKAGE_PINS["intercom"]
 
 
 # Inherited Stronk Pi control-plane environment variables that can redirect state-root

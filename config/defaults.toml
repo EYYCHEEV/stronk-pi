@@ -40,7 +40,7 @@ generated_agents_dir = "~/.stronk-pi/agent/agents"
 
 [package_pins]
 mcp_adapter = { name = "pi-mcp-adapter", version = "2.9.0" }
-subagents = { name = "stronk-pi-subagents", version = "0.22.0-stronk.4" }
+subagents = { name = "stronk-pi-subagents", version = "0.22.0-stronk.5" }
 intercom = { name = "stronk-pi-intercom", version = "0.6.0-stronk.1" }
 jiti = { name = "jiti", version = "2.7.0" }
 ask_user = { name = "pi-ask-user", version = "0.8.0" }

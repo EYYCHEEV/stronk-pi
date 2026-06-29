@@ -25,8 +25,8 @@
         "version": "0.28.0"
       },
       "intercom": {
-        "name": "pi-intercom",
-        "version": "0.6.0"
+        "name": "stronk-pi-intercom",
+        "version": "0.6.0-stronk.1"
       },
       "jiti": {
         "name": "jiti",
@@ -38,7 +38,7 @@
       },
       "subagents": {
         "name": "stronk-pi-subagents",
-        "version": "0.22.0-stronk.4"
+        "version": "0.22.0-stronk.5"
       },
       "tsx": {
         "name": "tsx",
@@ -55,50 +55,89 @@
   "artifacts": [
     {
       "name": "stronk-pi-plugin",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-      "sourceCommit": "bffa6caa5ee6823ecd0a6bf0531e10a7ff6006ab",
-      "immutableTag": "stronk-pi-plugin-v0.2.2",
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.2",
-      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.2.2/stronk-pi-plugin-0.2.2.tgz",
-      "sha256": "90ef35d72b31b7d36cf6c786feefb3d6417db6c0a896d83ef753a5962867e270",
-      "byteSize": 111606,
-      "workflowRunId": "28323446270",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.2.tgz@sha256:90ef35d72b31b7d36cf6c786feefb3d6417db6c0a896d83ef753a5962867e270",
+      "sourceCommit": "d8a362ae42802c06153cfb88e6e824d6ef63eca7",
+      "immutableTag": "stronk-pi-plugin-v0.2.3",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.3",
+      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/download/stronk-pi-plugin-v0.2.3/stronk-pi-plugin-0.2.3.tgz",
+      "sha256": "3ae39a992f72af0d3e05217f50fc5318f127ea8b0aff34a2e8c2636de2a54d4d",
+      "byteSize": 112841,
+      "workflowRunId": "28343587784",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-plugin/stronk-pi-plugin-0.2.3.tgz@sha256:3ae39a992f72af0d3e05217f50fc5318f127ea8b0aff34a2e8c2636de2a54d4d",
       "compatibilityVersion": "stronkpi-setup-v1",
-      "createdAt": "2026-06-28T13:15:52.729Z",
+      "createdAt": "2026-06-29T01:48:11.107Z",
       "provenance": {
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
-        "sourceCommit": "bffa6caa5ee6823ecd0a6bf0531e10a7ff6006ab",
-        "immutableTag": "stronk-pi-plugin-v0.2.2",
-        "workflowRunId": "28323446270"
+        "sourceCommit": "d8a362ae42802c06153cfb88e6e824d6ef63eca7",
+        "immutableTag": "stronk-pi-plugin-v0.2.3",
+        "workflowRunId": "28343587784"
       }
     },
     {
       "name": "stronk-pi-subagents",
-      "version": "0.22.0-stronk.4",
+      "version": "0.22.0-stronk.5",
       "sourceRepo": "EYYCHEEV/stronk-pi-subagents",
-      "sourceCommit": "b8e66493987fb3390946049f2c7989428b0f570e",
-      "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.4",
-      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-subagents/releases/tag/stronk-pi-subagents-v0.22.0-stronk.4",
-      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-subagents/releases/download/stronk-pi-subagents-v0.22.0-stronk.4/stronk-pi-subagents-0.22.0-stronk.4.tgz",
-      "sha256": "93bc322766b8ffcf811b1fdb3e0ea62538f02dab319d696d0d77689c3d0fbc12",
-      "byteSize": 257980,
-      "workflowRunId": "28315836713",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi-subagents/stronk-pi-subagents-0.22.0-stronk.4.tgz@sha256:93bc322766b8ffcf811b1fdb3e0ea62538f02dab319d696d0d77689c3d0fbc12",
+      "sourceCommit": "8bda0750b2d67da66dcdb34c3ef9b6d3e6e07365",
+      "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.5",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-subagents/releases/tag/stronk-pi-subagents-v0.22.0-stronk.5",
+      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-subagents/releases/download/stronk-pi-subagents-v0.22.0-stronk.5/stronk-pi-subagents-0.22.0-stronk.5.tgz",
+      "sha256": "a8852e5bb0aaa42d0a93184f53f461b8e852e9829442c913e998ebb73307a550",
+      "byteSize": 258940,
+      "workflowRunId": "28343541538",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-subagents/stronk-pi-subagents-0.22.0-stronk.5.tgz@sha256:a8852e5bb0aaa42d0a93184f53f461b8e852e9829442c913e998ebb73307a550",
       "compatibilityVersion": "stronkpi-setup-v1",
-      "createdAt": "2026-06-28T07:57:27Z",
+      "createdAt": "2026-06-29T01:47:02.211Z",
       "upstreamRepo": "nicobailon/pi-subagents",
       "upstreamVersion": "0.22.0",
       "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486",
       "provenance": {
         "sourceRepo": "EYYCHEEV/stronk-pi-subagents",
-        "sourceCommit": "b8e66493987fb3390946049f2c7989428b0f570e",
-        "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.4",
-        "workflowRunId": "28315836713",
+        "sourceCommit": "8bda0750b2d67da66dcdb34c3ef9b6d3e6e07365",
+        "immutableTag": "stronk-pi-subagents-v0.22.0-stronk.5",
+        "workflowRunId": "28343541538",
         "upstreamRepo": "nicobailon/pi-subagents",
         "upstreamVersion": "0.22.0",
         "upstreamCommit": "1fd371d2a068458741a15507edc6cd49a9807486"
+      }
+    },
+    {
+      "name": "stronk-pi-intercom",
+      "version": "0.6.0-stronk.1",
+      "sourceRepo": "EYYCHEEV/stronk-pi-intercom",
+      "sourceCommit": "d4de2fd4ffe853260b013e53632bac4175dbad69",
+      "immutableTag": "stronk-pi-intercom-v0.6.0-stronk.1",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-intercom/releases/tag/stronk-pi-intercom-v0.6.0-stronk.1",
+      "artifactUrl": "https://github.com/EYYCHEEV/stronk-pi-intercom/releases/download/stronk-pi-intercom-v0.6.0-stronk.1/stronk-pi-intercom-0.6.0-stronk.1.tgz",
+      "sha256": "d2b632ae73e4ef56896e72b17074be19653a1cbe44ca231c03764b5526cab4be",
+      "byteSize": 42079,
+      "workflowRunId": "28343541533",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-intercom/stronk-pi-intercom-0.6.0-stronk.1.tgz@sha256:d2b632ae73e4ef56896e72b17074be19653a1cbe44ca231c03764b5526cab4be",
+      "compatibilityVersion": "stronkpi-setup-v1",
+      "createdAt": "2026-06-29T01:46:48.636Z",
+      "upstreamRepo": "nicobailon/pi-intercom",
+      "upstreamVersion": "0.6.0",
+      "upstreamCommit": "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457",
+      "seedType": "npm-tarball",
+      "seedPackage": "pi-intercom",
+      "seedVersion": "0.6.0",
+      "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
+      "seedTarballSha256": "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818",
+      "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6",
+      "provenance": {
+        "sourceRepo": "EYYCHEEV/stronk-pi-intercom",
+        "sourceCommit": "d4de2fd4ffe853260b013e53632bac4175dbad69",
+        "immutableTag": "stronk-pi-intercom-v0.6.0-stronk.1",
+        "workflowRunId": "28343541533",
+        "upstreamRepo": "nicobailon/pi-intercom",
+        "upstreamVersion": "0.6.0",
+        "upstreamCommit": "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457",
+        "seedType": "npm-tarball",
+        "seedPackage": "pi-intercom",
+        "seedVersion": "0.6.0",
+        "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
+        "seedTarballSha256": "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818",
+        "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6"
       }
     }
   ]

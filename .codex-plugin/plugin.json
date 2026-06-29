@@ -1,7 +1,7 @@
 {
   "id": "stronk-pi-setup",
   "name": "Stronk Pi Setup",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Public-ready setup, validation, and manifest verification surface for Stronk Pi.",
   "author": {
     "name": "EYYCHEEV"
