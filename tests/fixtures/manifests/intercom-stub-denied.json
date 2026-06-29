@@ -14,7 +14,7 @@
         "sourceRepo": "EYYCHEEV/stronk-pi-plugin",
         "workflowRunId": "fixture-run-1"
       },
-      "releaseUrl": "http://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.2",
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-plugin/releases/tag/stronk-pi-plugin-v0.2.2",
       "sbom": "fixture-sbom",
       "sha256": "7a305549963f4d8f0a44adbdd6072de4116c88affdee7f68b6e383c253919f3f",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
@@ -50,9 +50,9 @@
       "workflowRunId": "fixture-run-subagents"
     },
     {
-      "artifactPath": "../artifacts/stronk-pi-intercom-0.6.0-stronk.1.tgz",
-      "attestation": "github-attestation:EYYCHEEV/stronk-pi-intercom/stronk-pi-intercom-0.6.0-stronk.1.tgz@sha256:7fad8ed2360b02ac8b080164be4be447736325b67531f2d156a90a51f41e6dc1",
-      "byteSize": 706,
+      "artifactPath": "../artifacts/stronk-pi-intercom-stub.tgz",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-intercom/stronk-pi-intercom-0.6.0-stronk.1.tgz@sha256:17e464af244c9cdf03fbeb9635d9eba2fe7e06dad58d32c0526bba1a9e31836e",
+      "byteSize": 156,
       "compatibilityVersion": "stronkpi-setup-v1",
       "createdAt": "2026-06-16T00:00:00Z",
       "immutableTag": "stronk-pi-intercom-v0.6.0-stronk.1",
@@ -78,7 +78,7 @@
       "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
       "seedType": "npm-tarball",
       "seedVersion": "0.6.0",
-      "sha256": "7fad8ed2360b02ac8b080164be4be447736325b67531f2d156a90a51f41e6dc1",
+      "sha256": "17e464af244c9cdf03fbeb9635d9eba2fe7e06dad58d32c0526bba1a9e31836e",
       "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6",
       "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
       "sourceRepo": "EYYCHEEV/stronk-pi-intercom",

@@ -2,6 +2,8 @@
   "artifacts": [
     "archive-traversal.tgz",
     "hardlink-escape.tgz",
+    "stronk-pi-intercom-0.6.0-stronk.1.tgz",
+    "stronk-pi-intercom-stub.tgz",
     "stronk-pi-plugin-0.1.0.tgz",
     "stronk-pi-plugin-0.2.0.tgz",
     "stronk-pi-plugin-0.2.1.tgz",

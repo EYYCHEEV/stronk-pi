@@ -48,6 +48,45 @@
       "upstreamVersion": "0.22.0",
       "version": "0.22.0-stronk.4",
       "workflowRunId": "fixture-run-subagents"
+    },
+    {
+      "artifactPath": "../artifacts/stronk-pi-intercom-0.6.0-stronk.1.tgz",
+      "attestation": "github-attestation:EYYCHEEV/stronk-pi-intercom/stronk-pi-intercom-0.6.0-stronk.1.tgz@sha256:7fad8ed2360b02ac8b080164be4be447736325b67531f2d156a90a51f41e6dc1",
+      "byteSize": 706,
+      "compatibilityVersion": "stronkpi-setup-v1",
+      "createdAt": "2026-06-16T00:00:00Z",
+      "immutableTag": "stronk-pi-intercom-v0.6.0-stronk.1",
+      "name": "stronk-pi-intercom",
+      "provenance": {
+        "immutableTag": "stronk-pi-intercom-v0.6.0-stronk.1",
+        "seedPackage": "pi-intercom",
+        "seedTarballSha256": "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818",
+        "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
+        "seedType": "npm-tarball",
+        "seedVersion": "0.6.0",
+        "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6",
+        "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+        "sourceRepo": "EYYCHEEV/stronk-pi-intercom",
+        "upstreamCommit": "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457",
+        "upstreamRepo": "nicobailon/pi-intercom",
+        "upstreamVersion": "0.6.0",
+        "workflowRunId": "fixture-run-intercom"
+      },
+      "releaseUrl": "https://github.com/EYYCHEEV/stronk-pi-intercom/releases/tag/stronk-pi-intercom-v0.6.0-stronk.1",
+      "seedPackage": "pi-intercom",
+      "seedTarballSha256": "76c0d5284661aac437248bb6c7a32879fe863296bd15cb533751b27cafc44818",
+      "seedTarballUrl": "https://registry.npmjs.org/pi-intercom/-/pi-intercom-0.6.0.tgz",
+      "seedType": "npm-tarball",
+      "seedVersion": "0.6.0",
+      "sha256": "7fad8ed2360b02ac8b080164be4be447736325b67531f2d156a90a51f41e6dc1",
+      "sourceArchiveSha256": "3ce238f4a75ce9c66ad76766ee878ef19dd83eef620739b73fe08e35c84311c6",
+      "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+      "sourceRepo": "EYYCHEEV/stronk-pi-intercom",
+      "upstreamCommit": "5caa4aa1bd060cf0aebbf1a5dfbb1abb6e23e457",
+      "upstreamRepo": "nicobailon/pi-intercom",
+      "upstreamVersion": "0.6.0",
+      "version": "0.6.0-stronk.1",
+      "workflowRunId": "fixture-run-intercom"
     }
   ],
   "bundle": {
@@ -74,8 +113,8 @@
         "version": "0.28.0"
       },
       "intercom": {
-        "name": "pi-intercom",
-        "version": "0.6.0"
+        "name": "stronk-pi-intercom",
+        "version": "0.6.0-stronk.1"
       },
       "jiti": {
         "name": "jiti",

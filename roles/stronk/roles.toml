@@ -14,7 +14,7 @@ read_tools = ["read", "grep", "find", "ls"]
 write_tools = ["read", "grep", "find", "ls", "bash", "write", "edit"]
 extensions = [
   "~/.stronk-pi/artifacts/stronk-pi-plugin-0.2.2/package/src/index.mjs",
-  "pi-intercom",
+  "stronk-pi-intercom",
 ]
 write_roles = [
   "executor",

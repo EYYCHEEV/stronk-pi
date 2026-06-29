@@ -11,7 +11,7 @@ log_root = "~/.stronk-pi/logs"
 tmp_root = "~/.stronk-pi/tmp"
 generated_mcp_file = ".mcp.json"
 web_search_config = "~/.stronk-pi/config/pi/web-search.json"
-intercom_bridge = "~/.stronk-pi/agent/extensions/pi-intercom"
+intercom_bridge = "~/.stronk-pi/agent/extensions/stronk-pi-intercom"
 
 [harness]
 subagent_facade = "stronk"
@@ -41,7 +41,7 @@ generated_agents_dir = "~/.stronk-pi/agent/agents"
 [package_pins]
 mcp_adapter = { name = "pi-mcp-adapter", version = "2.9.0" }
 subagents = { name = "stronk-pi-subagents", version = "0.22.0-stronk.4" }
-intercom = { name = "pi-intercom", version = "0.6.0" }
+intercom = { name = "stronk-pi-intercom", version = "0.6.0-stronk.1" }
 jiti = { name = "jiti", version = "2.7.0" }
 ask_user = { name = "pi-ask-user", version = "0.8.0" }
 tsx = { name = "tsx", version = "4.22.4" }

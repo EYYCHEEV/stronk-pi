@@ -29,6 +29,8 @@ def load_guard():
 guard = load_guard()
 SUBAGENTS_PACKAGE = "stronk-pi-subagents"
 SUBAGENTS_VERSION = "0.22.0-stronk.4"
+INTERCOM_PACKAGE = "stronk-pi-intercom"
+INTERCOM_VERSION = "0.6.0-stronk.1"
 
 
 # Inherited Stronk Pi control-plane environment variables that can redirect state-root
@@ -347,20 +349,15 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             encoding="utf-8",
         )
         (package / "index.ts").write_text("export default function extension() {}\n", encoding="utf-8")
-        if name == SUBAGENTS_PACKAGE:
-            required_files = {
-                "src/extension/index.ts": "export default function subagents() {}\n",
-                "src/agents/agents.ts": "export function discoverAgents() { return []; }\n",
-                "src/agents/skills.ts": "export function discoverAvailableSkills() { return []; }\n",
-                "src/agents/user-agent-dir.ts": "export function resolveUserAgentDir() { return ''; }\n",
-                "agents/delegate.md": "---\nname: delegate\ndescription: delegate\n---\n",
-                "agents/worker.md": "---\nname: worker\ndescription: worker\n---\n",
-                "skills/stronkpi-agents/SKILL.md": "---\ndescription: Stronk Pi subagent swarm orchestration\n---\n",
-            }
-            for relative, content in required_files.items():
-                target = package / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+        required_files = {
+            relative: f"// {name} fixture for {relative}\n"
+            for relative in guard.runtime_package_required_paths(name, version)
+        }
+        required_files.setdefault("index.ts", "export default function extension() {}\n")
+        for relative, content in required_files.items():
+            target = package / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
         return package
 
     def write_runtime_defaults(self, root: Path) -> None:
@@ -463,7 +460,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             root = tmp / "state"
             self.write_runtime_defaults(root)
             subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
-            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
+            intercom = self.write_runtime_package(root, INTERCOM_PACKAGE, INTERCOM_VERSION)
 
             status = guard.prepare_subagent_runtime(root)
             inspected = guard.inspect_subagent_runtime(root)
@@ -472,15 +469,15 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
                 session_dir=root / "agent" / "sessions",
                 subagent_status=status,
             )
-            bridge_link = root / "agent" / "extensions" / "pi-intercom"
+            bridge_link = root / "agent" / "extensions" / INTERCOM_PACKAGE
             bridge_is_symlink = bridge_link.is_symlink()
             bridge_target = bridge_link.resolve()
 
         self.assertTrue(status["enabled"])
         self.assertEqual(status["packages"]["subagents"]["packageName"], SUBAGENTS_PACKAGE)
         self.assertEqual(status["packages"]["subagents"]["packageVersion"], SUBAGENTS_VERSION)
-        self.assertEqual(status["packages"]["intercom"]["packageName"], "pi-intercom")
-        self.assertEqual(status["packages"]["intercom"]["packageVersion"], "0.6.0")
+        self.assertEqual(status["packages"]["intercom"]["packageName"], INTERCOM_PACKAGE)
+        self.assertEqual(status["packages"]["intercom"]["packageVersion"], INTERCOM_VERSION)
         self.assertEqual(status["extensionPaths"], [str(subagents), str(intercom)])
         self.assertEqual(status["intercomBridgePath"], str(bridge_link))
         self.assertTrue(status["intercomBridgeLinked"])
@@ -502,7 +499,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             session_dir=Path("/tmp/session"),
             subagent_status={
                 "enabled": True,
-                "extensionPaths": ["/tmp/stronk-pi-subagents", "/tmp/pi-intercom"],
+                "extensionPaths": ["/tmp/stronk-pi-subagents", "/tmp/stronk-pi-intercom"],
             },
         )
 
@@ -521,7 +518,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             tmp = Path(raw)
             root = tmp / "state"
             subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
-            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
+            intercom = self.write_runtime_package(root, INTERCOM_PACKAGE, INTERCOM_VERSION)
             env = os.environ.copy()
             env.update(
                 {
@@ -553,7 +550,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertEqual(payload["agentDir"], str(root / "agent"))
         self.assertEqual(payload["sessionDir"], str(root / "agent" / "sessions"))
         self.assertEqual(payload["mcpConfigPath"], str(tmp.resolve(strict=False) / ".mcp.json"))
-        self.assertEqual(payload["intercomBridgePath"], str(root / "agent" / "extensions" / "pi-intercom"))
+        self.assertEqual(payload["intercomBridgePath"], str(root / "agent" / "extensions" / INTERCOM_PACKAGE))
         self.assertIn(str(root / "home"), payload["blockedRealHomeWriteRisks"])
         subagent_runtime = payload["subagentRuntime"]
         self.assertTrue(subagent_runtime["configured"], subagent_runtime)
@@ -562,8 +559,8 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertTrue(subagent_runtime["intercomBridgeLinked"], subagent_runtime)
         self.assertEqual(subagent_runtime["packages"]["subagents"]["packageName"], SUBAGENTS_PACKAGE)
         self.assertEqual(subagent_runtime["packages"]["subagents"]["packageVersion"], SUBAGENTS_VERSION)
-        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageName"], "pi-intercom")
-        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageVersion"], "0.6.0")
+        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageName"], INTERCOM_PACKAGE)
+        self.assertEqual(subagent_runtime["packages"]["intercom"]["packageVersion"], INTERCOM_VERSION)
         self.assertIn(str(subagents), subagent_runtime["extensionPaths"])
         self.assertIn(str(intercom), subagent_runtime["extensionPaths"])
 
@@ -578,7 +575,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
                 guard.prepare_subagent_runtime(root)
         missing = {(item["packageName"], item["packageVersion"]) for item in inspected["missingPackages"]}
         self.assertIn((SUBAGENTS_PACKAGE, SUBAGENTS_VERSION), missing)
-        self.assertIn(("pi-intercom", "0.6.0"), missing)
+        self.assertIn((INTERCOM_PACKAGE, INTERCOM_VERSION), missing)
         self.assertFalse(inspected["enabled"])
         self.assertFalse(inspected["intercomBridgeLinked"])
 
@@ -593,7 +590,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
                 json.dumps({"name": SUBAGENTS_PACKAGE, "version": SUBAGENTS_VERSION}) + "\n",
                 encoding="utf-8",
             )
-            self.write_runtime_package(root, "pi-intercom", "0.6.0")
+            self.write_runtime_package(root, INTERCOM_PACKAGE, INTERCOM_VERSION)
 
             inspected = guard.inspect_subagent_runtime(root)
 
@@ -608,7 +605,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             tmp = Path(raw)
             root = tmp / "state"
             plugin_path = (root / guard.DEFAULT_PLUGIN_RELATIVE).resolve(strict=False)
-            bridge_path = root / "agent" / "extensions" / "pi-intercom"
+            bridge_path = root / "agent" / "extensions" / INTERCOM_PACKAGE
 
             guard.install_bundle_defaults(root=root, dry_run=False)
             role_text = (root / "agent" / "agents" / "technical-researcher.md").read_text(encoding="utf-8")
@@ -620,6 +617,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertIn(str(bridge_path), extension_items)
         self.assertNotIn("~/.stronk-pi", extensions_line)
         self.assertNotIn("pi-intercom", extension_items)
+        self.assertNotIn("stronk-pi-intercom", extension_items)
 
     def test_prepare_runtime_refreshes_project_mcp_json(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -746,7 +744,7 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
             xdg_cache.mkdir()
             self.write_adapter_package(root)
             subagents = self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
-            intercom = self.write_runtime_package(root, "pi-intercom", "0.6.0")
+            intercom = self.write_runtime_package(root, INTERCOM_PACKAGE, INTERCOM_VERSION)
             plugin_path = root / "artifacts" / f"stronk-pi-plugin-{guard.DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
             plugin_path.parent.mkdir(parents=True)
             plugin_path.write_text("export default function plugin() {}\n", encoding="utf-8")
