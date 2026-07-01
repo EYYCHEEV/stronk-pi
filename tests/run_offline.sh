@@ -60,6 +60,8 @@ export HOME="$tmp/home"
 export XDG_CONFIG_HOME="$tmp/xdg-config"
 export XDG_CACHE_HOME="$tmp/xdg-cache"
 mkdir -p "$HOME" "$XDG_CONFIG_HOME/mcp" "$XDG_CACHE_HOME"
+project="$tmp/project"
+mkdir -p "$project"
 cat > "$XDG_CONFIG_HOME/mcp/registry.toml" <<'EOF'
 version = 1
 
@@ -90,8 +92,8 @@ test -f "$HOME/.stronk-pi/agent/agents/import-smoke.md"
 bin/stronkpi-setup update --dry-run --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup update --manifest tests/fixtures/manifests/good-local.json
 bin/stronkpi-setup run --dry-run
-bin/stronkpi --validate-only >/dev/null
-bin/stronkpi --diagnose --json >/dev/null
+(cd "$project" && "$repo_root/bin/stronkpi" --validate-only >/dev/null)
+(cd "$project" && "$repo_root/bin/stronkpi" --diagnose --json >/dev/null)
 test ! -e "$HOME/.pi"
 test ! -e "$HOME/.config/pi"
 test ! -e "$HOME/.local/share/pi"
@@ -101,4 +103,4 @@ test ! -e "$HOME/.stronk-pi/home"
 prefix="$tmp/prefix"
 bin/stronkpi-setup install --prefix "$prefix"
 "$prefix/bin/stronkpi-setup" validate
-"$prefix/bin/stronkpi" --validate-only >/dev/null
+(cd "$project" && "$prefix/bin/stronkpi" --validate-only >/dev/null)

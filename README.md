@@ -104,8 +104,12 @@ The canonical runtime state and config root is `~/.stronk-pi/`.
 It also refreshes setup-managed Pi runtime config under
 `~/.stronk-pi/agent/`, including `settings.json`, `models.json`, and
 `AGENTS.md`.
-Generated MCP adapter config is refreshed as project `.mcp.json` with mode
-`0600` and is passed to Pi through `--mcp-config`.
+When selected MCP servers are healthy, generated MCP adapter config is refreshed
+as project `.mcp.json` with mode `0600` and is passed to Pi through
+`--mcp-config`.
+If every selected MCP server is degraded by ordinary readiness drift, launch
+omits the adapter/config and removes only a safe current-user regular generated
+`.mcp.json`.
 The source of truth remains the operator MCP registry plus project `.mcp-tools`;
 `.mcp.json` is the Claude Code-compatible generated artifact.
 Runtime sessions use `~/.stronk-pi/agent/sessions/`.

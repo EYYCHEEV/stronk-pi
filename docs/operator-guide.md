@@ -57,14 +57,19 @@ Bad fixture manifests must fail without installing anything.
 STRONKPI_NO_NETWORK=1 bin/stronkpi-setup doctor --mcp-registry ~/.config/mcp/registry.toml --mcp-tools .mcp-tools
 ```
 
-The MCP registry check validates registry TOML, server command availability,
-selected tool names, selected server environment variables, unsafe URLs,
-floating package refs, and accidental personal absolute paths.
-At launch, `stronkpi` enables `pi-mcp-adapter` when `.mcp-tools` selects at
-least one server and the pinned adapter package is installed.
-It writes project `.mcp.json` from the selected registry entries and passes
-that file through `--mcp-config`, so MCP servers stay lazy and only connect
-when used.
+The MCP registry check is strict by default.
+It validates registry TOML, registry ownership and permissions, server command availability, selected tool names, selected server environment variables, unsafe URLs, floating package refs, inline secret-like values, and accidental personal absolute paths.
+Selected missing environment variables and command-not-on-`PATH` drift fail `stronkpi-setup doctor` unless a doctor option explicitly softens a missing registry path.
+At launch, `stronkpi` treats selected missing environment variables and selected or unselected command-not-on-`PATH` drift as nonblocking MCP readiness degradation.
+It warns on stderr with server names and environment variable names only, omits degraded selected servers, preserves healthy selected servers, and continues launching when no hard MCP issue exists.
+If every selected MCP server is degraded, `stronkpi` launches without `pi-mcp-adapter` and without `--mcp-config`.
+Live runtime preparation then removes a stale generated project `.mcp.json` only when that path is a non-symlink regular file owned by the current user.
+`stronkpi --validate-only` and `stronkpi --diagnose` evaluate the same MCP state without writing or removing project `.mcp.json`.
+With `--json`, stdout remains parseable JSON and MCP details appear under `mcpAdapter.selectedTools`, `mcpAdapter.healthySelectedTools`, `mcpAdapter.degradedServers`, `mcpAdapter.hardIssues`, `mcpAdapter.warnings`, `mcpAdapter.configChanged`, and `mcpAdapter.configRemoved`.
+Hard MCP failures still stop launch and make `stronkpi --validate-only` fail.
+Hard failures include project `.pi/mcp.json` bypass, unsafe registry content, registry trust, ownership, schema, and permission failures, invalid `.mcp-tools`, mutable package refs, inline secret-like values, unsafe URLs, personal paths, missing selected registry entries, missing trusted adapter package when healthy selected servers remain, and Stronk trust-boundary violations.
+When at least one selected server remains healthy, `stronkpi` enables `pi-mcp-adapter` only if the pinned adapter package is installed.
+It writes project `.mcp.json` from the healthy selected registry entries and passes that file through `--mcp-config`, so MCP servers stay lazy and only connect when used.
 The generated file is written with mode `0600`.
 The source of truth is the operator MCP registry plus project `.mcp-tools`;
 `.mcp.json` is a refreshed Claude Code-compatible artifact.

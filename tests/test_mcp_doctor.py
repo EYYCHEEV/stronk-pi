@@ -123,6 +123,51 @@ class McpDoctorTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertTrue(result["symlink"])
         self.assertEqual(result["serverCount"], 1)
 
+    def test_registry_trust_schema_and_toml_failures_remain_hard(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            tools = self.write_empty_tools(tmp)
+            directory_registry = tmp / "registry-dir"
+            directory_registry.mkdir()
+            bad_toml = tmp / "bad.toml"
+            bad_toml.write_text("[servers.example\n", encoding="utf-8")
+            bad_schema = tmp / "bad-schema.toml"
+            bad_schema.write_text(
+                """
+version = 2
+
+[servers.example]
+command = "python3"
+args = []
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            writable = tmp / "writable.toml"
+            writable.write_text(
+                """
+version = 1
+
+[servers.example]
+command = "python3"
+args = []
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            writable.chmod(0o620)
+            cases = [
+                (directory_registry, "registry_not_regular"),
+                (bad_toml, "registry_toml"),
+                (bad_schema, "registry_schema"),
+                (writable, "registry_permissions"),
+            ]
+            for registry, code in cases:
+                with self.subTest(code=code):
+                    result = guard.validate_mcp_registry(registry, tools_path=tools)
+                    self.assertFalse(result["ok"], result)
+                    self.assertIn(code, {issue["code"] for issue in result["issues"]})
+
     def test_mcp_tools_file_must_be_regular_owned_and_not_writable(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -183,6 +228,49 @@ class McpDoctorTests(StronkEnvIsolationMixin, unittest.TestCase):
                 result = guard.validate_mcp_registry(registry, tools_path=tools)
         self.assertFalse(result["ok"])
         self.assertIn("selected env var is missing", "\n".join(result["errors"]))
+
+    def test_doctor_entrypoint_keeps_selected_missing_env_strict(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            registry = self.write_registry(
+                tmp,
+                """
+                version = 1
+
+                [servers.example]
+                command = "python3"
+                args = []
+                env_vars = ["STRONKPI_TEST_MISSING_KEY"]
+                """,
+            )
+            tools = self.write_tools(tmp, "example")
+            env = os.environ.copy()
+            env["STRONKPI_NO_NETWORK"] = "1"
+            env.pop("STRONKPI_TEST_MISSING_KEY", None)
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "bin" / "stronkpi-setup"),
+                    "doctor",
+                    "--json",
+                    "--mcp-registry",
+                    str(registry),
+                    "--mcp-tools",
+                    str(tools),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+
+        payload = json.loads(proc.stdout)
+        self.assertEqual(proc.returncode, 1, proc.stderr + proc.stdout)
+        self.assertFalse(payload["ok"], payload)
+        self.assertIn("selected env var is missing", "\n".join(payload["errors"]))
+        self.assertIn("missing_env_var", {issue["code"] for issue in payload["mcpRegistry"]["issues"]})
 
     def test_unknown_selected_tool_fails(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -279,6 +367,70 @@ class McpDoctorTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertIn("secret-like key", errors)
         self.assertIn("secret-like value", errors)
 
+    def test_mcp_registry_unsafe_url_fails(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            registry = self.write_registry(
+                tmp,
+                """
+                version = 1
+
+                [servers.example]
+                command = "python3"
+                args = ["http://localhost:8123/mcp"]
+                """,
+            )
+            result = guard.validate_mcp_registry(registry, tools_path=self.write_empty_tools(tmp))
+
+        self.assertFalse(result["ok"])
+        self.assertIn("private/local host denied", "\n".join(result["errors"]))
+        self.assertIn("unsafe_url", {issue["code"] for issue in result["issues"]})
+
+    def test_selected_command_not_on_path_stays_strict_for_doctor(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            registry = self.write_registry(
+                tmp,
+                """
+                version = 1
+
+                [servers.example]
+                command = "stronkpi-missing-doctor-command-fixture"
+                args = []
+                """,
+            )
+            tools = self.write_tools(tmp, "example")
+            result = guard.validate_mcp_registry(registry, tools_path=tools)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("command_not_on_path", {issue["code"] for issue in result["issues"]})
+
+    def test_mcp_registry_blocks_upstream_git_and_gh_targets(self):
+        cases = [
+            ("gh-selected", "gh", ["pr", "create", "--repo", "earendil-works/pi"]),
+            ("git-selected", "git", ["push", "https://github.com/badlogic/pi-mono", "main"]),
+        ]
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            for name, command, args in cases:
+                with self.subTest(name=name):
+                    args_json = json.dumps(args)
+                    registry = self.write_registry(
+                        tmp,
+                        f"""
+                        version = 1
+
+                        [servers.{name}]
+                        command = "{command}"
+                        args = {args_json}
+                        """,
+                    )
+                    tools = self.write_tools(tmp, name)
+                    result = guard.validate_mcp_registry(registry, tools_path=tools)
+
+                self.assertFalse(result["ok"])
+                self.assertIn("stronk_trust_boundary", {issue["code"] for issue in result["issues"]})
+
     def test_doctor_entrypoint_reports_mcp_registry(self):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -362,6 +514,30 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         target = root / "config" / "defaults.toml"
         target.parent.mkdir(parents=True)
         target.write_text((ROOT / "config" / "defaults.toml").read_text(encoding="utf-8"), encoding="utf-8")
+
+    def write_plugin_package(self, root: Path) -> Path:
+        plugin_path = root / "artifacts" / f"stronk-pi-plugin-{guard.DEFAULT_PLUGIN_VERSION}" / "package" / "src" / "index.mjs"
+        plugin_path.parent.mkdir(parents=True)
+        plugin_path.write_text("export default function plugin() {}\n", encoding="utf-8")
+        return plugin_path
+
+    def write_fake_pi_binary(self, root: Path) -> Path:
+        pi_binary = root / "pi-fork-runtime" / "node_modules" / ".bin" / "pi"
+        pi_binary.parent.mkdir(parents=True)
+        pi_binary.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json, os, pathlib, sys",
+                    "root = pathlib.Path(os.environ['STRONK_PI_STATE_ROOT'])",
+                    "(root / 'launch-argv.json').write_text(json.dumps(sys.argv[1:]) + '\\n', encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        pi_binary.chmod(0o755)
+        return pi_binary
 
     def test_adapter_config_uses_selected_servers_and_env_placeholders(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -451,6 +627,211 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertEqual(str(registry), status["registryPath"])
         self.assertFalse((root / "agent" / "mcp.json").exists())
         self.assertTrue(project_mcp_exists)
+
+    def test_prepare_runtime_preserves_healthy_selected_when_selected_env_missing(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            xdg = tmp / "xdg"
+            project.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            self.write_runtime_defaults(root)
+            self.write_adapter_package(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.healthy]
+                command = "python3"
+                args = ["-c", "print('healthy')"]
+
+                [servers.missingenv]
+                command = "python3"
+                args = []
+                env_vars = ["STRONKPI_TEST_MISSING_SECRET"]
+                """,
+            )
+            self.write_tools(project, "healthy\nmissingenv")
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                os.environ.pop("STRONKPI_TEST_MISSING_SECRET", None)
+                status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+            config_path = guard.project_generated_mcp_config_path(project, root)
+            generated = json.loads(config_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(status["enabled"], status)
+        self.assertEqual(status["selectedTools"], ["healthy", "missingenv"])
+        self.assertEqual(status["healthySelectedTools"], ["healthy"])
+        self.assertEqual(sorted(generated["mcpServers"].keys()), ["healthy"])
+        self.assertEqual(status["degradedServers"][0]["server"], "missingenv")
+        self.assertEqual(status["degradedServers"][0]["missingEnvVars"], ["STRONKPI_TEST_MISSING_SECRET"])
+        self.assertIn("missing_env_var", status["degradedServers"][0]["issueCodes"])
+        self.assertFalse(status["hardIssues"], status)
+        self.assertIn("STRONKPI_TEST_MISSING_SECRET", "\n".join(status["warnings"]))
+
+    def test_prepare_runtime_softens_selected_and_unselected_command_drift(self):
+        missing_selected_command = "stronkpi-missing-selected-mcp-command-fixture"
+        missing_unselected_command = "stronkpi-missing-unselected-mcp-command-fixture"
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            xdg = tmp / "xdg"
+            project.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            self.write_runtime_defaults(root)
+            self.write_adapter_package(root)
+            self.write_registry(
+                xdg / "mcp",
+                f"""
+                version = 1
+
+                [servers.broken]
+                command = "{missing_selected_command}"
+                args = []
+
+                [servers.healthy]
+                command = "python3"
+                args = ["-c", "print('healthy')"]
+
+                [servers.unused]
+                command = "{missing_unselected_command}"
+                args = []
+                """,
+            )
+            self.write_tools(project, "healthy\nbroken")
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+            generated = json.loads(guard.project_generated_mcp_config_path(project, root).read_text(encoding="utf-8"))
+
+        self.assertTrue(status["enabled"], status)
+        self.assertEqual(status["healthySelectedTools"], ["healthy"])
+        self.assertEqual(sorted(generated["mcpServers"].keys()), ["healthy"])
+        degraded = {entry["server"]: entry for entry in status["degradedServers"]}
+        self.assertEqual(set(degraded), {"broken", "unused"})
+        self.assertTrue(degraded["broken"]["selected"])
+        self.assertFalse(degraded["unused"]["selected"])
+        self.assertIn("command_not_on_path", degraded["broken"]["issueCodes"])
+        self.assertIn("command_not_on_path", degraded["unused"]["issueCodes"])
+        warning_text = "\n".join(status["warnings"])
+        self.assertNotIn(missing_selected_command, warning_text)
+        self.assertNotIn(missing_unselected_command, warning_text)
+        self.assertFalse(status["hardIssues"], status)
+
+    def test_prepare_runtime_all_selected_degraded_removes_stale_config_without_adapter(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            xdg = tmp / "xdg"
+            project.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            self.write_runtime_defaults(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.missingenv]
+                command = "python3"
+                args = []
+                env_vars = ["STRONKPI_TEST_MISSING_SECRET"]
+                """,
+            )
+            self.write_tools(project, "missingenv")
+            stale = project / ".mcp.json"
+            stale.write_text('{"mcpServers":{"stale":{"command":"python3"}}}\n', encoding="utf-8")
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                os.environ.pop("STRONKPI_TEST_MISSING_SECRET", None)
+                status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+            launch_args = guard.build_pi_launch_args(
+                plugin_path=Path("/tmp/plugin/src/index.mjs"),
+                session_dir=root / "agent" / "sessions",
+                mcp_status=status,
+            )
+
+        self.assertFalse(status["enabled"], status)
+        self.assertFalse(status["adapterInstalled"], status)
+        self.assertEqual(status["healthySelectedTools"], [])
+        self.assertTrue(status["configRemoved"], status)
+        self.assertFalse(stale.exists())
+        self.assertNotIn("--mcp-config", launch_args)
+        self.assertIn("no selected MCP servers are healthy", "\n".join(status["warnings"]))
+        self.assertFalse(status["hardIssues"], status)
+
+    def test_prepare_runtime_all_selected_degraded_refuses_unsafe_stale_config_cleanup(self):
+        for stale_kind in ("symlink", "directory"):
+            with self.subTest(stale_kind=stale_kind), tempfile.TemporaryDirectory() as raw:
+                tmp = Path(raw)
+                root = tmp / "state"
+                project = tmp / "project"
+                xdg = tmp / "xdg"
+                project.mkdir()
+                (xdg / "mcp").mkdir(parents=True)
+                self.write_runtime_defaults(root)
+                self.write_registry(
+                    xdg / "mcp",
+                    """
+                    version = 1
+
+                    [servers.missingenv]
+                    command = "python3"
+                    args = []
+                    env_vars = ["STRONKPI_TEST_MISSING_SECRET"]
+                    """,
+                )
+                self.write_tools(project, "missingenv")
+                stale = project / ".mcp.json"
+                if stale_kind == "symlink":
+                    target = tmp / "target-mcp.json"
+                    target.write_text('{"mcpServers":{}}\n', encoding="utf-8")
+                    stale.symlink_to(target)
+                else:
+                    stale.mkdir()
+
+                with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                    os.environ.pop("STRONKPI_TEST_MISSING_SECRET", None)
+                    status = guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+                self.assertFalse(status["enabled"], status)
+                self.assertFalse(status["configRemoved"], status)
+                self.assertTrue(stale.exists() or stale.is_symlink())
+                self.assertIn("stale generated MCP config was not removed", "\n".join(status["warnings"]))
+
+    def test_prepare_runtime_blocks_upstream_mcp_targets(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            xdg = tmp / "xdg"
+            project.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            self.write_runtime_defaults(root)
+            self.write_adapter_package(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.blocked]
+                command = "git"
+                args = ["push", "https://github.com/earendil-works/pi", "main"]
+                """,
+            )
+            self.write_tools(project, "blocked")
+
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(xdg)}, clear=False):
+                status = guard.inspect_mcp_adapter_runtime(root, cwd=project)
+                with self.assertRaisesRegex(guard.StronkPiError, "blocked upstream"):
+                    guard.prepare_mcp_adapter_runtime(root, cwd=project)
+
+        self.assertFalse(status["enabled"], status)
+        self.assertEqual(status["healthySelectedTools"], [])
+        self.assertIn("stronk_trust_boundary", {issue["code"] for issue in status["hardIssues"]})
 
     def test_subagent_runtime_launch_args_include_intercom_extensions(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -561,6 +942,132 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertEqual(subagent_runtime["packages"]["intercom"]["packageVersion"], INTERCOM_VERSION)
         self.assertIn(str(subagents), subagent_runtime["extensionPaths"])
         self.assertIn(str(intercom), subagent_runtime["extensionPaths"])
+
+    def test_validate_and_diagnose_json_report_soft_mcp_degradation_without_writes(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            home = tmp / "home"
+            xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
+            project.mkdir()
+            home.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
+            self.write_runtime_defaults(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.missingenv]
+                command = "python3"
+                args = []
+                env_vars = ["STRONKPI_TEST_MISSING_SECRET"]
+                """,
+            )
+            self.write_tools(project, "missingenv")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(xdg),
+                    "XDG_CACHE_HOME": str(xdg_cache),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+            env.pop("STRONKPI_TEST_MISSING_SECRET", None)
+
+            validate_proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi"), "--validate-only", "--json"],
+                cwd=project,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+            diagnose_proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi"), "--diagnose", "--json"],
+                cwd=project,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+
+        for proc in (validate_proc, diagnose_proc):
+            payload = json.loads(proc.stdout)
+            self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+            self.assertTrue(payload["ok"], payload)
+            self.assertEqual(payload["mcpAdapter"]["selectedTools"], ["missingenv"])
+            self.assertEqual(payload["mcpAdapter"]["healthySelectedTools"], [])
+            self.assertEqual(payload["mcpAdapter"]["degradedServers"][0]["server"], "missingenv")
+            self.assertEqual(payload["mcpAdapter"]["degradedServers"][0]["missingEnvVars"], ["STRONKPI_TEST_MISSING_SECRET"])
+            self.assertFalse(payload["mcpAdapter"]["hardIssues"], payload)
+            self.assertFalse(payload["mcpAdapter"]["configChanged"], payload)
+            self.assertFalse(payload["mcpAdapter"]["configRemoved"], payload)
+        self.assertFalse((project / ".mcp.json").exists())
+
+    def test_validate_json_reports_hard_mcp_issues_as_parseable_json(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            home = tmp / "home"
+            xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
+            project.mkdir()
+            home.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
+            self.write_runtime_defaults(root)
+            self.write_adapter_package(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.example]
+                command = "python3"
+                args = ["http://localhost:8123/mcp"]
+                """,
+            )
+            self.write_tools(project, "example")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(xdg),
+                    "XDG_CACHE_HOME": str(xdg_cache),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi"), "--validate-only", "--json"],
+                cwd=project,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+
+        payload = json.loads(proc.stdout)
+        self.assertEqual(proc.returncode, 1, proc.stderr + proc.stdout)
+        self.assertFalse(payload["ok"], payload)
+        self.assertEqual({issue["code"] for issue in payload["mcpAdapter"]["hardIssues"]}, {"unsafe_url"})
+        self.assertEqual(payload["mcpAdapter"]["healthySelectedTools"], [])
+        self.assertFalse(payload["mcpAdapter"]["enabled"], payload)
+        self.assertEqual(proc.stderr, "")
+        self.assertFalse((project / ".mcp.json").exists())
 
     def test_subagent_runtime_fails_closed_when_intercom_packages_missing(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -858,6 +1365,67 @@ class McpAdapterRuntimeTests(StronkEnvIsolationMixin, unittest.TestCase):
         self.assertFalse((home / ".local" / "share" / "pi").exists())
         self.assertFalse((home / ".cache" / "pi").exists())
         self.assertFalse((root / "home").exists())
+
+    def test_stronkpi_entrypoint_launches_when_selected_mcp_env_missing(self):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            root = tmp / "state"
+            project = tmp / "project"
+            home = tmp / "home"
+            xdg = tmp / "xdg"
+            xdg_cache = tmp / "xdg-cache"
+            project.mkdir()
+            home.mkdir()
+            (xdg / "mcp").mkdir(parents=True)
+            xdg_cache.mkdir()
+            self.write_runtime_defaults(root)
+            self.write_runtime_package(root, SUBAGENTS_PACKAGE, SUBAGENTS_VERSION)
+            self.write_runtime_package(root, INTERCOM_PACKAGE, INTERCOM_VERSION)
+            self.write_plugin_package(root)
+            self.write_fake_pi_binary(root)
+            self.write_registry(
+                xdg / "mcp",
+                """
+                version = 1
+
+                [servers.missingenv]
+                command = "python3"
+                args = []
+                env_vars = ["STRONKPI_SMOKE_MISSING_SECRET"]
+                """,
+            )
+            self.write_tools(project, "missingenv")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "STRONK_PI_DEV_OVERRIDES": "1",
+                    "STRONKPI_STATE_ROOT": str(root),
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(xdg),
+                    "XDG_CACHE_HOME": str(xdg_cache),
+                    "STRONKPI_NO_NETWORK": "1",
+                }
+            )
+            env.pop("STRONKPI_SMOKE_MISSING_SECRET", None)
+
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "stronkpi")],
+                cwd=project,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+
+            launch_args = json.loads((root / "launch-argv.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertIn("stronkpi: warning:", proc.stderr)
+        self.assertIn("STRONKPI_SMOKE_MISSING_SECRET", proc.stderr)
+        self.assertIn("no selected MCP servers are healthy", proc.stderr)
+        self.assertNotIn("--mcp-config", launch_args)
+        self.assertFalse((project / ".mcp.json").exists())
 
 
 if __name__ == "__main__":

@@ -143,8 +143,10 @@ python3 -m unittest tests/test_public_surface.py tests/test_plugin_state_root.py
 
 The diagnose output should show the operator's real `effectiveHome` and
 Stronk-owned paths under `~/.stronk-pi`.
-When `.mcp-tools` selects servers, launch should refresh project `.mcp.json`
-and pass that file through `--mcp-config`.
+When `.mcp-tools` selects healthy servers, launch should refresh project
+`.mcp.json` and pass that file through `--mcp-config`.
+When all selected servers are degraded by ordinary readiness drift, launch
+should warn and omit the MCP adapter/config.
 Do not run cleanup with `--apply` unless the dry-run has been reviewed.
 
 ## Rollback

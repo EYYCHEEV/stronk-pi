@@ -739,6 +739,18 @@ def command_targets_blocked_upstream(command: str) -> bool:
     return False
 
 
+def mcp_server_targets_blocked_upstream(command: str, args: list[str]) -> bool:
+    program = Path(command).name
+    text = " ".join([program, *args])
+    if not BLOCKED_UPSTREAM_REPO_RE.search(text):
+        return False
+    if program == "gh":
+        return True
+    if program == "git" and args and args[0] in BLOCKED_UPSTREAM_GIT_ACTIONS:
+        return True
+    return False
+
+
 def internally_screen_bash(command: str) -> tuple[bool, str]:
     if command_targets_blocked_upstream(command):
         return False, "blocked upstream git/gh action denied by distribution boundary"
@@ -2061,6 +2073,40 @@ def validate_mcp_tools_path(path: Path) -> None:
         raise StronkPiError(f"MCP tools allowlist must not be world-writable: {path}")
 
 
+def mcp_issue(
+    code: str,
+    message: str,
+    *,
+    severity: str = "error",
+    server: str | None = None,
+    selected: bool | None = None,
+    env_var: str | None = None,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    issue: dict[str, Any] = {
+        "code": code,
+        "severity": severity,
+        "message": message,
+    }
+    if server is not None:
+        issue["server"] = server
+    if selected is not None:
+        issue["selected"] = selected
+    if env_var is not None:
+        issue["envVar"] = env_var
+    if path is not None:
+        issue["path"] = str(path)
+    return issue
+
+
+def append_mcp_issue(result: dict[str, Any], issue: dict[str, Any]) -> None:
+    result.setdefault("issues", []).append(issue)
+    if issue.get("severity") == "warning":
+        result["warnings"].append(str(issue["message"]))
+    else:
+        result["errors"].append(str(issue["message"]))
+
+
 def validate_mcp_registry(
     path: Path,
     *,
@@ -2078,17 +2124,22 @@ def validate_mcp_registry(
         "env": {},
         "warnings": [],
         "errors": [],
+        "issues": [],
     }
-    errors = result["errors"]
-    warnings = result["warnings"]
+
+    def add_error(code: str, message: str, **fields: Any) -> None:
+        append_mcp_issue(result, mcp_issue(code, message, severity="error", **fields))
+
+    def add_warning(code: str, message: str, **fields: Any) -> None:
+        append_mcp_issue(result, mcp_issue(code, message, severity="warning", **fields))
 
     if not path.exists():
         message = f"MCP registry missing: {path}"
         if allow_missing:
-            warnings.append(message)
+            add_warning("registry_missing", message, path=path)
             result["ok"] = True
             return result
-        errors.append(message)
+        add_error("registry_missing", message, path=path)
         return result
     registry_file = path
     if path.is_symlink():
@@ -2096,26 +2147,26 @@ def validate_mcp_registry(
         registry_file = path.resolve()
         result["resolvedPath"] = str(registry_file)
     if not registry_file.is_file():
-        errors.append(f"MCP registry is not a regular file: {path}")
+        add_error("registry_not_regular", f"MCP registry is not a regular file: {path}", path=path)
         return result
     stat_result = registry_file.stat()
     if stat_result.st_uid != os.getuid():
-        errors.append(f"MCP registry is not owned by the current user: {path}")
+        add_error("registry_owner", f"MCP registry is not owned by the current user: {path}", path=path)
     mode = stat_result.st_mode
     if mode & stat.S_IWOTH or mode & stat.S_IWGRP:
-        errors.append(f"MCP registry must not be group/world writable: {path}")
+        add_error("registry_permissions", f"MCP registry must not be group/world writable: {path}", path=path)
 
     try:
         data = load_mcp_registry_toml(registry_file)
     except (OSError, StronkPiError) as exc:
-        errors.append(str(exc))
+        add_error("registry_toml", str(exc), path=path)
         return result
 
     if data.get("version") != 1:
-        errors.append("MCP registry version must be 1")
+        add_error("registry_schema", "MCP registry version must be 1", path=path)
     servers = data.get("servers")
     if not isinstance(servers, dict) or not servers:
-        errors.append("MCP registry must define at least one [servers.<name>] table")
+        add_error("registry_schema", "MCP registry must define at least one [servers.<name>] table", path=path)
         return result
 
     selected: list[str] = []
@@ -2128,91 +2179,182 @@ def validate_mcp_registry(
             selected = load_mcp_tools(tools_path)
             result["selectedTools"] = selected
         except (OSError, StronkPiError) as exc:
-            errors.append(str(exc))
+            add_error("mcp_tools_invalid", str(exc), path=tools_path)
 
     selected_set = set(selected)
     server_names: list[str] = []
     env_status: dict[str, str] = {}
     for name, server in sorted(servers.items()):
         if not isinstance(name, str) or not MCP_SERVER_NAME_RE.fullmatch(name):
-            errors.append(f"invalid MCP server name: {name}")
+            add_error("invalid_server_name", f"invalid MCP server name: {name}")
             continue
         server_names.append(name)
+        selected_server = name in selected_set
         if not isinstance(server, dict):
-            errors.append(f"MCP server {name} must be a table")
+            add_error("server_schema", f"MCP server {name} must be a table", server=name, selected=selected_server)
             continue
         command = server.get("command")
         if not isinstance(command, str) or not command.strip():
-            errors.append(f"MCP server {name} command must be a non-empty string")
+            add_error(
+                "invalid_command",
+                f"MCP server {name} command must be a non-empty string",
+                server=name,
+                selected=selected_server,
+            )
         elif "/" not in command and shutil.which(command) is None:
-            errors.append(f"MCP server {name} command is not on PATH: {command}")
+            add_error(
+                "command_not_on_path",
+                f"MCP server {name} command is not on PATH",
+                server=name,
+                selected=selected_server,
+            )
         elif contains_personal_path(command):
-            errors.append(f"MCP server {name} command contains a personal path")
+            add_error(
+                "personal_path",
+                f"MCP server {name} command contains a personal path",
+                server=name,
+                selected=selected_server,
+            )
 
         args = server.get("args", [])
         if args is None:
             args = []
         if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
-            errors.append(f"MCP server {name} args must be a list of strings")
+            add_error(
+                "server_schema",
+                f"MCP server {name} args must be a list of strings",
+                server=name,
+                selected=selected_server,
+            )
             args = []
         for arg in args:
             if contains_personal_path(arg):
-                errors.append(f"MCP server {name} arg contains a personal path")
+                add_error(
+                    "personal_path",
+                    f"MCP server {name} arg contains a personal path",
+                    server=name,
+                    selected=selected_server,
+                )
             if string_has_secret(arg):
-                errors.append(f"MCP server {name} arg contains a secret-like value")
+                add_error(
+                    "secret_like_value",
+                    f"MCP server {name} arg contains a secret-like value",
+                    server=name,
+                    selected=selected_server,
+                )
             if "://" in arg:
                 try:
                     static_http_url_check(arg, f"MCP server {name} URL")
                 except StronkPiError as exc:
-                    errors.append(str(exc))
+                    add_error("unsafe_url", str(exc), server=name, selected=selected_server)
             try:
                 fail_if_floating_mcp_arg(f"MCP server {name} arg", arg)
             except StronkPiError as exc:
-                errors.append(str(exc))
+                add_error("mutable_package_ref", str(exc), server=name, selected=selected_server)
+        if isinstance(command, str) and command.strip() and mcp_server_targets_blocked_upstream(command, args):
+            add_error(
+                "stronk_trust_boundary",
+                f"MCP server {name} targets a blocked upstream repository",
+                server=name,
+                selected=selected_server,
+            )
 
         env_vars = server.get("env_vars", [])
         if env_vars is None:
             env_vars = []
         if not isinstance(env_vars, list) or not all(isinstance(item, str) for item in env_vars):
-            errors.append(f"MCP server {name} env_vars must be a list of strings")
+            add_error(
+                "server_schema",
+                f"MCP server {name} env_vars must be a list of strings",
+                server=name,
+                selected=selected_server,
+            )
             env_vars = []
         for env_name in env_vars:
             if not ENV_NAME_RE.fullmatch(env_name):
-                errors.append(f"MCP server {name} env var name is invalid: {env_name}")
+                add_error(
+                    "invalid_env_var",
+                    f"MCP server {name} env var name is invalid: {env_name}",
+                    server=name,
+                    selected=selected_server,
+                    env_var=env_name,
+                )
                 continue
             status = "set" if os.environ.get(env_name) else "missing"
             env_status[f"{name}.{env_name}"] = status
-            if status == "missing" and name in selected_set:
-                errors.append(f"MCP server {name} selected env var is missing: {env_name}")
+            if status == "missing" and selected_server:
+                add_error(
+                    "missing_env_var",
+                    f"MCP server {name} selected env var is missing: {env_name}",
+                    server=name,
+                    selected=True,
+                    env_var=env_name,
+                )
             elif status == "missing":
-                warnings.append(f"MCP server {name} env var is missing: {env_name}")
+                add_warning(
+                    "missing_env_var",
+                    f"MCP server {name} env var is missing: {env_name}",
+                    server=name,
+                    selected=False,
+                    env_var=env_name,
+                )
 
         env = server.get("env", {})
         if env is None:
             env = {}
         if not isinstance(env, dict):
-            errors.append(f"MCP server {name} env must be a table")
+            add_error(
+                "server_schema",
+                f"MCP server {name} env must be a table",
+                server=name,
+                selected=selected_server,
+            )
             env = {}
         for key, value in env.items():
             if not isinstance(key, str) or not ENV_NAME_RE.fullmatch(key):
-                errors.append(f"MCP server {name} env key is invalid: {key}")
+                add_error(
+                    "invalid_env_var",
+                    f"MCP server {name} env key is invalid: {key}",
+                    server=name,
+                    selected=selected_server,
+                )
             if SECRET_KEY_PATTERN.search(str(key)):
-                errors.append(f"MCP server {name} env must not store secret-like key {key}; use env_vars")
+                add_error(
+                    "secret_like_key",
+                    f"MCP server {name} env must not store secret-like key {key}; use env_vars",
+                    server=name,
+                    selected=selected_server,
+                )
             if isinstance(value, str) and string_has_secret(value):
-                errors.append(f"MCP server {name} env contains a secret-like value")
+                add_error(
+                    "secret_like_value",
+                    f"MCP server {name} env contains a secret-like value",
+                    server=name,
+                    selected=selected_server,
+                )
 
         timeout = server.get("startup_timeout_sec")
         if timeout is not None and (not isinstance(timeout, int) or timeout <= 0):
-            errors.append(f"MCP server {name} startup_timeout_sec must be a positive integer")
+            add_error(
+                "server_schema",
+                f"MCP server {name} startup_timeout_sec must be a positive integer",
+                server=name,
+                selected=selected_server,
+            )
 
     for selected_name in selected:
         if selected_name not in servers:
-            errors.append(f"MCP selected tool is not in registry: {selected_name}")
+            add_error(
+                "missing_selected_registry_entry",
+                f"MCP selected tool is not in registry: {selected_name}",
+                server=selected_name,
+                selected=True,
+            )
 
     result["serverCount"] = len(server_names)
     result["servers"] = server_names
     result["env"] = env_status
-    result["ok"] = not errors
+    result["ok"] = not result["errors"]
     return result
 
 
@@ -2408,6 +2550,96 @@ def resolve_mcp_adapter_package(root: Path, defaults: dict[str, Any]) -> tuple[P
     return candidates[0], False
 
 
+def mcp_runtime_issue_is_soft(issue: dict[str, Any]) -> bool:
+    code = issue.get("code")
+    if code == "command_not_on_path":
+        return True
+    if code == "missing_env_var" and issue.get("selected") is True:
+        return True
+    return False
+
+
+def aggregate_degraded_mcp_servers(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_server: dict[str, dict[str, Any]] = {}
+    for issue in issues:
+        server = str(issue.get("server") or "")
+        if not server:
+            continue
+        entry = by_server.setdefault(
+            server,
+            {
+                "server": server,
+                "selected": bool(issue.get("selected")),
+                "issueCodes": [],
+                "missingEnvVars": [],
+            },
+        )
+        entry["selected"] = bool(entry["selected"] or issue.get("selected"))
+        code = str(issue.get("code") or "")
+        if code and code not in entry["issueCodes"]:
+            entry["issueCodes"].append(code)
+        env_var = issue.get("envVar")
+        if code == "missing_env_var" and isinstance(env_var, str) and env_var not in entry["missingEnvVars"]:
+            entry["missingEnvVars"].append(env_var)
+    return list(by_server.values())
+
+
+def mcp_degradation_warning(entry: dict[str, Any]) -> str:
+    server = str(entry.get("server") or "unknown")
+    codes = set(entry.get("issueCodes") or [])
+    parts: list[str] = []
+    missing = [str(name) for name in entry.get("missingEnvVars") or []]
+    if missing:
+        parts.append("missing env vars " + ", ".join(missing))
+    if "command_not_on_path" in codes:
+        parts.append("command is not on PATH")
+    detail = "; ".join(parts) if parts else "readiness check failed"
+    if entry.get("selected"):
+        return f"MCP server {server} is degraded ({detail}); omitting it for this launch"
+    return f"MCP server {server} is degraded ({detail}); it is not selected and will not block launch"
+
+
+def generated_mcp_config_write_issue(path: Path) -> dict[str, Any] | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode):
+        return mcp_issue(
+            "generated_config_unsafe",
+            f"generated MCP config must not be a symlink: {path}",
+            path=path,
+        )
+    if not stat.S_ISREG(info.st_mode):
+        return mcp_issue(
+            "generated_config_unsafe",
+            f"generated MCP config path is not a regular file: {path}",
+            path=path,
+        )
+    if info.st_uid != os.getuid():
+        return mcp_issue(
+            "generated_config_unsafe",
+            f"generated MCP config must be owned by the current user: {path}",
+            path=path,
+        )
+    return None
+
+
+def remove_safe_generated_mcp_config(path: Path) -> tuple[bool, str | None]:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False, None
+    if stat.S_ISLNK(info.st_mode):
+        return False, f"stale generated MCP config was not removed because it is a symlink: {path}"
+    if not stat.S_ISREG(info.st_mode):
+        return False, f"stale generated MCP config was not removed because it is not a regular file: {path}"
+    if info.st_uid != os.getuid():
+        return False, f"stale generated MCP config was not removed because it is not owned by the current user: {path}"
+    path.unlink()
+    return True, None
+
+
 def runtime_package_status(root: Path, defaults: dict[str, Any], key: str) -> dict[str, Any]:
     name, version = runtime_package_pin(defaults, key)
     candidates = runtime_package_candidate_paths(root, name, version)
@@ -2452,16 +2684,30 @@ def ensure_runtime_symlink(link: Path, target: Path, label: str) -> bool:
 
 
 def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
+    return evaluate_mcp_adapter_runtime(root, cwd=cwd)
+
+
+def evaluate_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
     launch_cwd = cwd or Path.cwd()
     defaults = load_runtime_defaults(root)
     name, version = mcp_adapter_pin(defaults)
     adapter_path, adapter_installed = resolve_mcp_adapter_package(root, defaults)
-    tools_path, selected = selected_mcp_tools_for_runtime(launch_cwd)
     project_configs = find_project_mcp_configs(launch_cwd)
     config_path = project_generated_mcp_config_path(launch_cwd, root)
-    return {
+    tools_path = default_mcp_tools_path(launch_cwd)
+    selected: list[str] = []
+    hard_issues: list[dict[str, Any]] = []
+    if tools_path is not None:
+        try:
+            validate_mcp_tools_path(tools_path)
+            selected = unique_ordered(load_mcp_tools(tools_path))
+        except (OSError, StronkPiError) as exc:
+            hard_issues.append(
+                mcp_issue("mcp_tools_invalid", str(exc), path=tools_path)
+            )
+    status: dict[str, Any] = {
         "configured": bool(selected),
-        "enabled": bool(selected) and adapter_installed and not project_configs,
+        "enabled": False,
         "packageName": name,
         "packageVersion": version,
         "adapterPath": str(adapter_path),
@@ -2470,36 +2716,95 @@ def inspect_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
         "registryPath": str(default_mcp_registry_path()),
         "toolsPath": str(tools_path) if tools_path else None,
         "selectedTools": selected,
+        "healthySelectedTools": [],
+        "degradedServers": [],
+        "hardIssues": hard_issues,
+        "warnings": [],
+        "configChanged": False,
+        "configRemoved": False,
         "projectConfigFiles": [str(path) for path in project_configs],
     }
+    if not selected:
+        return status
+    if project_configs:
+        paths = ", ".join(str(path) for path in project_configs)
+        status["hardIssues"].append(
+            mcp_issue(
+                "project_mcp_config_bypass",
+                "project MCP config file(s) would bypass the Stronk selected-server boundary: "
+                f"{paths}; move selected server names to .mcp-tools and definitions to the MCP registry",
+            )
+        )
+    registry_path = default_mcp_registry_path()
+    registry = validate_mcp_registry(registry_path, tools_path=tools_path, allow_missing=False)
+    issues = [dict(issue) for issue in registry.get("issues", []) if isinstance(issue, dict)]
+    soft_issues = [
+        issue
+        for issue in issues
+        if issue.get("severity") != "warning" and mcp_runtime_issue_is_soft(issue)
+    ]
+    status["hardIssues"].extend(
+        issue
+        for issue in issues
+        if issue.get("severity") != "warning" and not mcp_runtime_issue_is_soft(issue)
+    )
+    degraded_servers = aggregate_degraded_mcp_servers(soft_issues)
+    degraded_selected = {entry["server"] for entry in degraded_servers if entry.get("selected")}
+    candidate_healthy_selected = [name for name in selected if name not in degraded_selected]
+    status["degradedServers"] = degraded_servers
+    status["warnings"].extend(mcp_degradation_warning(entry) for entry in degraded_servers)
+    if selected and not candidate_healthy_selected and degraded_selected and not status["hardIssues"]:
+        status["warnings"].append("no selected MCP servers are healthy; launching without MCP adapter/config")
+    if candidate_healthy_selected and not status["hardIssues"]:
+        write_issue = generated_mcp_config_write_issue(config_path)
+        if write_issue is not None:
+            status["hardIssues"].append(write_issue)
+    if candidate_healthy_selected and not status["hardIssues"] and not adapter_installed:
+        status["hardIssues"].append(
+            mcp_issue(
+                "adapter_missing",
+                f"MCP adapter package missing: expected {name}@{version} at {adapter_path}; "
+                "install a verified adapter package before launching with selected MCP servers",
+            )
+        )
+    healthy_selected = [] if status["hardIssues"] else candidate_healthy_selected
+    status["healthySelectedTools"] = healthy_selected
+    status["enabled"] = bool(healthy_selected) and adapter_installed and not status["hardIssues"]
+    return status
+
+
+def raise_for_mcp_runtime_hard_issues(status: dict[str, Any]) -> None:
+    issues = [issue for issue in status.get("hardIssues", []) if isinstance(issue, dict)]
+    if not issues:
+        return
+    messages = [str(issue.get("message") or issue.get("code") or "MCP runtime issue") for issue in issues]
+    if len(issues) == 1 and issues[0].get("code") in {
+        "adapter_missing",
+        "project_mcp_config_bypass",
+        "generated_config_unsafe",
+        "mcp_tools_invalid",
+    }:
+        raise StronkPiError(messages[0])
+    raise StronkPiError("MCP registry invalid: " + "; ".join(messages))
 
 
 def prepare_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[str, Any]:
     launch_cwd = cwd or Path.cwd()
-    tools_path, selected = selected_mcp_tools_for_runtime(launch_cwd)
-    defaults = load_runtime_defaults(root)
-    adapter_path, adapter_installed = resolve_mcp_adapter_package(root, defaults)
-    status = inspect_mcp_adapter_runtime(root, cwd=launch_cwd)
+    status = evaluate_mcp_adapter_runtime(root, cwd=launch_cwd)
+    raise_for_mcp_runtime_hard_issues(status)
+    selected = list(status.get("selectedTools") or [])
+    healthy_selected = list(status.get("healthySelectedTools") or [])
     if not selected:
         return status
-    project_configs = find_project_mcp_configs(launch_cwd)
-    if project_configs:
-        paths = ", ".join(str(path) for path in project_configs)
-        raise StronkPiError(
-            "project MCP config file(s) would bypass the Stronk selected-server boundary: "
-            f"{paths}; move selected server names to .mcp-tools and definitions to the MCP registry"
-        )
-    registry_path = default_mcp_registry_path()
-    mcp = validate_mcp_registry(registry_path, tools_path=tools_path, allow_missing=False)
-    if not mcp["ok"]:
-        raise StronkPiError("MCP registry invalid: " + "; ".join(str(error) for error in mcp["errors"]))
-    if not adapter_installed:
-        name, version = mcp_adapter_pin(defaults)
-        raise StronkPiError(
-            f"MCP adapter package missing: expected {name}@{version} at {adapter_path}; "
-            "install a verified adapter package before launching with selected MCP servers"
-        )
-    config = build_mcp_adapter_config(registry_path, selected)
+    config_path = Path(str(status["configPath"]))
+    if not healthy_selected:
+        removed, cleanup_warning = remove_safe_generated_mcp_config(config_path)
+        status["configRemoved"] = removed
+        if cleanup_warning:
+            status["warnings"].append(cleanup_warning)
+        return status
+    registry_path = Path(str(status["registryPath"]))
+    config = build_mcp_adapter_config(registry_path, healthy_selected)
     config_path = project_generated_mcp_config_path(launch_cwd, root)
     if write_generated_mcp_config(config_path, json.dumps(config, indent=2, sort_keys=True) + "\n"):
         status["configChanged"] = True
@@ -2508,9 +2813,8 @@ def prepare_mcp_adapter_runtime(root: Path, *, cwd: Path | None = None) -> dict[
     status.update(
         {
             "enabled": True,
-            "adapterPath": str(adapter_path),
             "configPath": str(config_path),
-            "selectedTools": selected,
+            "healthySelectedTools": healthy_selected,
         }
     )
     return status
@@ -3643,10 +3947,7 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
     if not status["runtime"]["piBinaryExists"]:
         warnings.append("trusted Pi runtime is not installed; live launch will fail closed until a trust-pinned runtime is installed")
     mcp_status = inspect_mcp_adapter_runtime(root)
-    if mcp_status["configured"] and not mcp_status["adapterInstalled"]:
-        warnings.append("selected MCP servers are configured but pi-mcp-adapter is not installed; live launch will fail closed")
-    if mcp_status["projectConfigFiles"]:
-        warnings.append("project MCP config files are present; live launch will fail closed to preserve the .mcp-tools boundary")
+    warnings.extend(str(warning) for warning in mcp_status.get("warnings", []))
     subagent_status = inspect_subagent_runtime(root)
     if subagent_status["enabled"]:
         subagent_status = prepare_subagent_runtime(root)
@@ -3657,7 +3958,7 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
         )
         warnings.append(f"Stronk Pi subagent intercom runtime packages are missing ({missing}); live launch will fail closed")
     payload = {
-        "ok": True,
+        "ok": not bool(mcp_status.get("hardIssues")),
         "version": VERSION,
         "setupRoot": str(setup_root()),
         "stateRoot": str(root),
@@ -3689,7 +3990,7 @@ def harness_payload(root: Path, bundle: dict[str, Any]) -> dict[str, Any]:
 
 
 def print_harness_text(label: str, payload: dict[str, Any]) -> None:
-    print(f"stronkpi {label}: ok")
+    print(f"stronkpi {label}: {'ok' if payload.get('ok') else 'failed'}")
     print(f"effective_home={payload['effectiveHome']}")
     print(f"state_root={payload['stateRoot']}")
     print(f"config_root={payload['configRoot']}")
@@ -3707,9 +4008,20 @@ def print_harness_text(label: str, payload: dict[str, Any]) -> None:
     print(f"runtime_installed={payload['runtime']['piBinaryExists']}")
     print(f"skill_roots={json.dumps(payload.get('skillRoots', []), separators=(',', ':'))}")
     print(f"mcp_selected_tools={','.join(payload['mcpAdapter']['selectedTools'])}")
+    print(f"mcp_healthy_selected_tools={','.join(payload['mcpAdapter'].get('healthySelectedTools', []))}")
     print(f"mcp_adapter_installed={payload['mcpAdapter']['adapterInstalled']}")
     print(f"mcp_adapter_enabled={payload['mcpAdapter']['enabled']}")
     print(f"mcp_config={payload['mcpConfigPath']}")
+    print(
+        "mcp_degraded_servers="
+        + json.dumps(redact(payload["mcpAdapter"].get("degradedServers", [])), separators=(",", ":"))
+    )
+    print(
+        "mcp_hard_issues="
+        + json.dumps(redact(payload["mcpAdapter"].get("hardIssues", [])), separators=(",", ":"))
+    )
+    print(f"mcp_config_changed={payload['mcpAdapter'].get('configChanged', False)}")
+    print(f"mcp_config_removed={payload['mcpAdapter'].get('configRemoved', False)}")
     print(f"subagent_adapter={payload['subagentRuntime']['adapter']}")
     print(f"subagent_runtime_enabled={payload['subagentRuntime']['enabled']}")
     print(f"subagent_extensions={','.join(payload['subagentRuntime']['extensionPaths'])}")
@@ -3808,7 +4120,7 @@ def harness_main(argv: list[str] | None = None) -> int:
             json_out(payload)
         else:
             print_harness_text("validate", payload)
-        return 0
+        return 0 if payload.get("ok") else 1
 
     if not payload["pluginArtifact"]["installed"]:
         raise StronkPiError("plugin artifact missing; run stronkpi-setup update before live launch")
@@ -3821,6 +4133,8 @@ def harness_main(argv: list[str] | None = None) -> int:
     session_dir = root / "agent" / "sessions"
     subagent_status = prepare_subagent_runtime(root)
     mcp_status = prepare_mcp_adapter_runtime(root)
+    for warning in mcp_status.get("warnings", []):
+        print(f"stronkpi: warning: {redact(str(warning))}", file=sys.stderr)
     offline = os.environ.get("STRONKPI_NO_NETWORK") == "1"
     if offline:
         env["PI_OFFLINE"] = "1"
