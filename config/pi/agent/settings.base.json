@@ -7,6 +7,8 @@
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k2.6",
+    "openrouter/qwen/qwen3.6-27b",
+    "openrouter/deepseek/deepseek-r1-0528",
     "kimi-coding/kimi-for-coding:xhigh",
     "neuralwatt/glm-5.2",
     "neuralwatt/glm-5.2-short",

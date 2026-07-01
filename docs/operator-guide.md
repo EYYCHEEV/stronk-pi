@@ -32,6 +32,12 @@ Use `stronkpi-setup refresh-config` after changing distribution-owned runtime co
 templates such as `config/pi/agent/settings.base.json`.
 The shipped coding default is `kimi-coding/kimi-for-coding` with Pi
 `defaultThinkingLevel` set to `xhigh`.
+The enabled model set includes `openrouter/qwen/qwen3.6-27b` as a 128K-context
+FP8 throughput profile sorted by OpenRouter provider throughput.
+It also includes `openrouter/deepseek/deepseek-r1-0528` for OpenRouter-backed
+DeepSeek R1 0528 reasoning tests.
+Set `OPENROUTER_API_KEY` in the launcher environment before selecting that
+OpenRouter profile.
 Add `--json` for automation.
 
 Use `stronkpi-setup import-codex-roles --dry-run` to preview a local role import.

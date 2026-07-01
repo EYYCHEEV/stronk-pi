@@ -118,6 +118,13 @@ Stronk-owned logs, caches, and temporary files use `~/.stronk-pi/logs/`,
 The public default coding model is `kimi-coding/kimi-for-coding` with Pi
 `defaultThinkingLevel` set to `xhigh`.
 The default `kimi-coding` provider is Pi's built-in Kimi Code provider.
+The shipped enabled-model set also includes
+`openrouter/qwen/qwen3.6-27b` as a 128K-context FP8 throughput test profile.
+The OpenRouter profile reads `OPENROUTER_API_KEY` from the environment and asks
+OpenRouter to use FP8 endpoints sorted by throughput without pinning a provider.
+The enabled OpenRouter set also includes `openrouter/deepseek/deepseek-r1-0528`
+for reasoning tests through OpenRouter's built-in DeepSeek R1 0528 catalog
+entry.
 Image preflight falls back to the Kimi Code Anthropic Messages endpoint under
 `https://api.kimi.com/coding` when Pi does not expose a host vision adapter.
 It reads `KIMI_API_KEY`, falling back to `KIMI_CODE_API_KEY`.

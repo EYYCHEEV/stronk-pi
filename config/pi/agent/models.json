@@ -25,6 +25,44 @@
       "apiKey": "MOONSHOT_API_KEY",
       "baseUrl": "https://api.moonshot.ai/v1"
     },
+    "openrouter": {
+      "name": "OpenRouter",
+      "apiKey": "$OPENROUTER_API_KEY",
+      "models": [
+        {
+          "id": "qwen/qwen3.6-27b",
+          "name": "Qwen3.6 27B FP8 Throughput (OpenRouter 128K)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "compat": {
+            "openRouterRouting": {
+              "quantizations": [
+                "fp8"
+              ],
+              "sort": "throughput"
+            }
+          },
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 0.285,
+            "output": 2.4,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
     "neuralwatt": {
       "name": "NeuralWatt",
       "api": "openai-completions",
