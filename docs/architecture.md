@@ -123,28 +123,36 @@ selection remains controlled by the Stronk Pi role manifest and local overlay.
 
 ## MCP Registry Doctor
 
-`stronkpi-setup doctor` validates the user-local MCP registry at
-`~/.config/mcp/registry.toml` or the path passed with `--mcp-registry`. It
-checks registry TOML, server command availability, selected `.mcp-tools`
-entries, selected server environment variables, unsafe URLs, floating package
-refs, and accidental personal paths.
+`stronkpi-setup doctor` validates the user-local MCP registry at `~/.config/mcp/registry.toml` or the path passed with `--mcp-registry`.
+It checks registry TOML, registry ownership and permissions, server command availability, selected `.mcp-tools` entries, selected server environment variables, unsafe URLs, floating package refs, inline secret-like values, and accidental personal paths.
+Doctor remains strict by default so selected missing environment variables and command-not-on-`PATH` drift stay visible as actionable health findings.
 
-`stronkpi` loads `pi-mcp-adapter` when `.mcp-tools` selects at least one MCP
-server and the pinned adapter package is installed under the Stronk Pi state
-root.
-Before launch, the harness validates the registry, writes
-project `.mcp.json` with only the selected servers, and passes that file
-through the adapter-owned `--mcp-config` flag.
+`stronkpi` uses a structured MCP runtime evaluation before launch.
+The evaluation reports `selectedTools`, `healthySelectedTools`, `degradedServers`, `hardIssues`, `warnings`, `configChanged`, and `configRemoved`.
+Selected missing environment variables and selected or unselected command-not-on-`PATH` drift are nonblocking readiness degradation for launch.
+Those warnings contain server names and environment variable names only.
+Degraded selected servers are omitted from the adapter config, while healthy selected servers are preserved.
+If no selected MCP server is healthy, launch omits `pi-mcp-adapter` and `--mcp-config` entirely.
+Live runtime preparation removes a stale generated project `.mcp.json` only when the managed path is a non-symlink regular file owned by the current user.
+
+Hard MCP failures still fail closed.
+Hard failures include project `.pi/mcp.json` bypass, unsafe registry content, registry trust, ownership, schema, and permission failures, invalid `.mcp-tools`, mutable package refs, inline secret-like values, unsafe URLs, personal paths, missing selected registry entries, missing trusted adapter package when healthy selected servers remain, and Stronk trust-boundary violations.
+
+When at least one selected server remains healthy, `stronkpi` loads `pi-mcp-adapter` only if the pinned adapter package is installed under the Stronk Pi state root.
+Before launch, the harness writes project `.mcp.json` with only the healthy selected servers and passes that file through the adapter-owned `--mcp-config` flag.
 The generated config is mode `0600` and uses `${ENV_NAME}` placeholders for
 selected secret environment variables instead of persisting their values.
 The adapter keeps MCP servers lazy: servers connect when their tools are used,
 not when Pi starts.
 
+`stronkpi --validate-only` and `stronkpi --diagnose` evaluate MCP status without writing or removing project `.mcp.json`.
+JSON modes keep stdout parseable JSON and place degradation or hard-failure details in the structured `mcpAdapter` payload.
+
 The generated project `.mcp.json` is refreshed from the registry and
 `.mcp-tools` on each launch so Claude Code-compatible repo tooling can discover
 the same selected MCP surface.
-Symlinked `.mcp.json` and project `.pi/mcp.json` files are rejected because
-they would bypass the selected-server boundary or escape the project file.
+Symlinked `.mcp.json` files are rejected when Stronk Pi would write adapter config, and stale cleanup never removes them.
+Project `.pi/mcp.json` files are rejected because they would bypass the selected-server boundary.
 Operators must keep server definitions in the registry and use `.mcp-tools`
 for the selected-server boundary.
 

@@ -40,7 +40,9 @@ touch "$XDG_CONFIG_HOME/mcp/tools.empty"
 
 "$HOME/.local/bin/stronkpi-setup" validate
 "$HOME/.local/bin/stronkpi-setup" doctor --json --mcp-registry "$XDG_CONFIG_HOME/mcp/registry.toml" --mcp-tools "$XDG_CONFIG_HOME/mcp/tools.empty" >/dev/null
-"$HOME/.local/bin/stronkpi" --validate-only >/dev/null
+project="$tmp/project"
+mkdir -p "$project"
+(cd "$project" && "$HOME/.local/bin/stronkpi" --validate-only >/dev/null)
 
 if [ -e "$tmp/home/.pi" ]; then
   printf '%s\n' "unexpected .pi directory created" >&2
